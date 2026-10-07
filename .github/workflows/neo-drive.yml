@@ -157,12 +157,28 @@ jobs:
             -c.extraMetadata.version=${{ needs.sync.outputs.version }} \
             -c.publish.provider=github \
             -c.publish.owner=${{ github.repository_owner }} \
-            -c.publish.repo=${{ github.event.repository.name }} 2>&1 | tee build.log || {
+            -c.publish.repo=${{ github.event.repository.name }} 2>&1 | tee "$RUNNER_TEMP/build.log" || {
               # surface the cause as an annotation, readable without the raw log
-              tail -40 build.log | tr '\n' ' ' | cut -c1-3500 | sed 's/^/::error title=electron-builder::/'
+              tail -40 "$RUNNER_TEMP/build.log" | tr '\n' ' ' | cut -c1-3500 | sed 's/^/::error title=electron-builder::/'
               exit 1
             }
           ls dist
+      # (The log above goes outside the project on purpose: a file written
+      # inside it while electron-builder packs gets packed half-written, and
+      # an app.asar that doesn't match its own hashes is one Electron won't
+      # start. v1.4.1–v1.4.4 shipped that way.)
+      - name: The packed app is whole
+        shell: bash
+        run: node scripts/neo-drive-check-asar.js dist/win-unpacked/resources/app.asar
+      - name: Smoke test — the app starts and makes its library
+        shell: pwsh
+        run: |
+          $p = Start-Process "dist\win-unpacked\NEO.exe" -PassThru
+          Start-Sleep -Seconds 25
+          if ($p.HasExited) { Write-Output "::error::NEO exited at once (code $($p.ExitCode))"; exit 1 }
+          if (-not (Test-Path "$env:USERPROFILE\Documents\NEO Library\library.json")) { Write-Output "::error::NEO started but never made its library"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          Write-Output "NEO starts."
       # One release, created once, with everything the updater needs. (Letting
       # electron-builder publish raced its own uploads into two releases.)
       - name: Publish the release
