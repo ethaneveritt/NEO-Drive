@@ -61,6 +61,8 @@
     #editor-view.nd-docked.nav-pinned:not(.outline-tab) #paper-scroll {
       width: min(var(--nd-pw), calc(100vw - 248px * var(--ui-zoom, 1) - var(--nd-dock-w) - 16px));
       left: calc(248px * var(--ui-zoom, 1) + (100vw - 248px * var(--ui-zoom, 1) - var(--nd-dock-w)) / 2); }
+    /* View → Show "What happens here…": off hides the empty outline note under each chapter (notes with words stay) */
+    body.nd-no-nav-hints #nav-list .nav-note:not(.nav-peek):not(.nav-note-ro):not(:focus):empty { display: none; }
     /* placeholders show only while Comments is open */
     body:not(.nd-flags) #chapters .ph-mark { display: none; }
 

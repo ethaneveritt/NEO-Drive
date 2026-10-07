@@ -89,6 +89,8 @@ function nameBy() { const v = readSettings().nameBy; return NAME_BY.includes(v) 
 // Google Docs comments shown in NEO: 'all' (chapters and the Master), 'chapters', or 'off'
 const COMMENTS_FROM = ['all', 'chapters', 'off'];
 function commentsFrom() { const v = readSettings().commentsFrom; return COMMENTS_FROM.includes(v) ? v : 'all'; }
+// the outline note's "What happens here…" under each chapter in the Chapters pane
+function navHints() { return readSettings().navHints !== false; }
 function masterNameBy() { const v = readSettings().masterNameBy; return NAME_BY.includes(v) ? v : nameBy(); }
 
 function status() {
@@ -132,6 +134,7 @@ async function handle(_e, msg) {
   const d = getDrive();
   switch (msg && msg.op) {
     case 'status': return status();
+    case 'prefs': return { navHints: navHints() };
     case 'connect': return connect();
     case 'disconnect': return disconnect();
     case 'sync': {
@@ -251,7 +254,7 @@ function extendAppMenu(template, rebuild) {
       items.push({ label: t('Last synced {time}', { time: when }), enabled: false });
     }
     if (commentsFrom() !== 'off' && dd.commentCount !== undefined) {
-      items.push({ label: dd.commentsError ? t('Comments: couldn’t be read ({msg})', { msg: dd.commentsError.slice(0, 80) }) : t('{n} open comments — in Notes & Comments (right edge)', { n: dd.commentCount }), enabled: false });
+      items.push({ label: dd.commentsError ? t('Comments: couldn’t be read ({msg})', { msg: dd.commentsError.slice(0, 80) }) : t('{n} open comments — Comments, at the right edge', { n: dd.commentCount }), enabled: false });
     }
     items.push(
       { type: 'separator' },
@@ -283,6 +286,14 @@ function extendAppMenu(template, rebuild) {
   }
   const menu = { label: t('Google Drive'), submenu: items };
   const out = [...template];
+  // View: the Chapters pane's "What happens here…" lines, on or off
+  const view = out.find((m) => m && Array.isArray(m.submenu) && (m.role === 'viewMenu' || m.label === t('View')));
+  if (view) {
+    view.submenu = [...view.submenu, { type: 'separator' }, {
+      label: t('Show “What happens here…” in the Chapters Pane'), type: 'checkbox', checked: navHints(),
+      click: (item) => { writeSettings({ navHints: !!item.checked }); sendToWindow({ type: 'nd-prefs', navHints: !!item.checked }); }
+    }];
+  }
   const help = out.findIndex((m) => m && m.role === 'help' || (m && m.label === t('Help')));
   out.splice(help < 0 ? out.length : help, 0, menu);
   return out;

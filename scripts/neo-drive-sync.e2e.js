@@ -451,6 +451,28 @@ test('placeholders (Ctrl+Shift+X) are comments: the flag shows only while Commen
   await tick(200);
 });
 
+test('View → Show “What happens here…” in the Chapters Pane: off hides the empty note lines, keeps written ones', async () => {
+  const { Menu } = require('electron');
+  const item = () => Menu.getApplicationMenu().items.find((i) => i.label === 'View').submenu.items.find((i) => /What happens here/.test(i.label));
+  assert.equal(item().checked, true);
+  await js(`renderNav()`);
+  await tick(200);
+  const shown = () => js(`[...document.querySelectorAll('#nav-list .nav-note:not(.nav-peek)')].map((n) => [n.textContent, getComputedStyle(n).display !== 'none'])`);
+  const [first] = await chIds();
+  await js(`book.chapterNotes[${JSON.stringify(first)}] = 'Rain.'; renderNav();`);
+  await tick(200);
+  assert.ok((await shown()).every(([, on]) => on));
+  item().click();
+  await tick(300);
+  const off = await shown();
+  assert.ok(off.length > 1);
+  assert.deepEqual(off.filter(([, on]) => on).map(([x]) => x), ['Rain.'], JSON.stringify(off));
+  item().click();
+  await tick(300);
+  assert.ok((await shown()).every(([, on]) => on));
+  await js(`book.chapterNotes[${JSON.stringify(first)}] = ''; renderNav();`);
+});
+
 test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () => {
   const order = await chIds();
   const last = order[order.length - 1];
