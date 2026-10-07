@@ -136,21 +136,31 @@ jobs:
           node-version: 22
       - run: npm ci --no-audit --no-fund
       # The updater in the installed app reads its source from this build's
-      # publish settings: this repo, not Hugh's.
-      - name: Build and publish the installer
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # publish settings (app-update.yml inside the app): this repo, not Hugh's.
+      - name: Build the installer
         shell: bash
         run: |
           set -o pipefail
-          npx electron-builder --win nsis --x64 --publish always \
+          npx electron-builder --win nsis --x64 --publish never \
             -c.extraMetadata.version=${{ needs.sync.outputs.version }} \
             -c.publish.provider=github \
             -c.publish.owner=${{ github.repository_owner }} \
-            -c.publish.repo=${{ github.event.repository.name }} \
-            -c.publish.releaseType=release 2>&1 | tee build.log || {
+            -c.publish.repo=${{ github.event.repository.name }} 2>&1 | tee build.log || {
               # surface the cause as an annotation, readable without the raw log
               tail -40 build.log | tr '\n' ' ' | cut -c1-3500 | sed 's/^/::error title=electron-builder::/'
               exit 1
             }
           ls dist
+      # One release, created once, with everything the updater needs. (Letting
+      # electron-builder publish raced its own uploads into two releases.)
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          v=${{ needs.sync.outputs.version }}
+          want=$(sed -n 's/^path: *//p' dist/latest.yml)
+          if [ "$want" != "NEO-Setup-$v.exe" ]; then echo "::error::latest.yml names '$want'"; exit 1; fi
+          gh release create "v$v" "dist/NEO-Setup-$v.exe" "dist/NEO-Setup-$v.exe.blockmap" dist/latest.yml \
+            --repo "${{ github.repository }}" --target "${{ needs.sync.outputs.sha }}" \
+            --title "NEO-Drive $v" --notes "Hugh Howey's NEO with NEO-Drive's additions. Installs and updates on its own." --latest
