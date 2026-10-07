@@ -189,7 +189,6 @@ test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () =>
 });
 
 test('a part gets its own page: "PART I:" over its title in italic', async () => {
-  const order = await chIds();
   await js(`(async () => {
     const id = 'ch-part-test';
     book.chapterOrder.unshift(id);
@@ -215,7 +214,6 @@ test('a part gets its own page: "PART I:" over its title in italic', async () =>
   // and the part's title line in NEO is untouched by the round trip
   await sync();
   assert.match(diskText('ch-part-test'), /The Crossing/);
-  void order;
 });
 
 async function main() {
