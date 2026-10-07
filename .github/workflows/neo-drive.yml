@@ -141,10 +141,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: >
-          npx electron-builder --win nsis --x64 --publish always
-          -c.extraMetadata.version=${{ needs.sync.outputs.version }}
-          -c.publish.provider=github
-          -c.publish.owner=${{ github.repository_owner }}
-          -c.publish.repo=${{ github.event.repository.name }}
-          -c.publish.releaseType=release
+        run: |
+          set -o pipefail
+          npx electron-builder --win nsis --x64 --publish always \
+            -c.extraMetadata.version=${{ needs.sync.outputs.version }} \
+            -c.publish.provider=github \
+            -c.publish.owner=${{ github.repository_owner }} \
+            -c.publish.repo=${{ github.event.repository.name }} \
+            -c.publish.releaseType=release 2>&1 | tee build.log || {
+              # surface the cause as an annotation, readable without the raw log
+              tail -40 build.log | tr '\n' ' ' | cut -c1-3500 | sed 's/^/::error title=electron-builder::/'
+              exit 1
+            }
+          ls dist
