@@ -60,6 +60,7 @@ function writeSettings(obj) {
 // settings.json. First launch follows the system language when NEO has it.
 // ---------------------------------------------------------------------------
 const NeoI18n = require('./i18n.js');
+const neoDrive = require('./neo-drive/main.js'); // NEO-Drive hook
 const { t } = NeoI18n;
 const LOCALES_DIR = path.join(__dirname, 'locales');
 let uiLanguage = 'en';
@@ -1631,7 +1632,7 @@ function createWindow() {
     items.push({ role: 'copy', label: t('Copy'), enabled: !!can.canCopy });
     if (params.isEditable) items.push({ role: 'paste', label: t('Paste'), enabled: !!can.canPaste });
     items.push({ type: 'separator' }, { role: 'selectAll', label: t('Select All') });
-    Menu.buildFromTemplate(items).popup({ window: win });
+    Menu.buildFromTemplate(neoDrive.extendTextMenu(items, params, win)).popup({ window: win }); // NEO-Drive hook
   });
 
   // NEO does its own spellchecking (see spell:* handlers) — the engine's
@@ -2409,7 +2410,7 @@ function lookForUpdate() {
 
 // what's on GitHub, for the fallback path and the release link
 async function latestReleaseFromGitHub() {
-  const res = await fetch('https://api.github.com/repos/hughhowey/neo/releases/latest', {
+  const res = await fetch(neoDrive.LATEST_RELEASE_API, { // NEO-Drive hook: our releases, not Hugh's
     headers: { 'User-Agent': 'NEO-App' }
   });
   if (!res.ok) throw new Error('GitHub API returned ' + res.status);
