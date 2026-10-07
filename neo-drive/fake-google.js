@@ -178,6 +178,8 @@ class FakeGoogle {
           const u = r.updateTextStyle;
           if (u.range.segmentId) { replies.push({}); continue; }
           d.textStyle(u.range.startIndex, u.range.endIndex, u.textStyle, u.fields);
+        } else if (r.deleteHeader) {
+          delete d.headers[r.deleteHeader.headerId];
         } else if (r.createHeader) {
           const hid = newId('hdr');
           d.headers[hid] = { text: '\n' };

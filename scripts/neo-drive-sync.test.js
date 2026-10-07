@@ -46,9 +46,10 @@ test('first sync makes a folder, a Master Manuscript, a Chapters folder and a Do
   assert.deepStrictEqual(c1.map((b) => b.k), ['chapter', 'p', 'brk', 'p']);
   const m = B.fromDoc(await t.g.getDoc(t.master().id), 'master');
   assert.deepStrictEqual(m.map((b) => b.text), ['The Lighthouse', 'Book One', 'Ethan Everitt', 'Chapter 1 — Cold Front', 'It rained on the harbor.', '***', 'Mara counted coins.', 'Chapter 2 — The Keeper’s House', 'The house was cold.']);
-  // the reading-copy reminder in the header
-  const hdr = Object.values((await t.g.getDoc(t.master().id)).headers)[0];
-  assert.match(hdr.content[0].paragraph.elements[0].textRun.content, /Reading copy/);
+  // the reading-copy note: a comment, not in the page
+  assert.deepStrictEqual(Object.keys((await t.g.getDoc(t.master().id)).headers), []);
+  const notes = await t.g.listComments(t.master().id);
+  assert.deepStrictEqual(notes.map((c) => c.content), ['Reading copy — comments welcome. Edits made here are undone automatically.']);
 });
 
 test('parts are folders inside Chapters, holding their chapters', async () => {
@@ -171,7 +172,7 @@ test('an edit in the Master Manuscript is undone, with a comment saying where it
   assert.strictEqual(r.masterEdits[0].name, 'Chapter 1 — Cold Front');
   assert.strictEqual(r.masterEdits[0].after, 'It rained on the old harbor.');
   assert.doesNotMatch(t.g.docText(id), /old harbor/);
-  const comments = await t.g.listComments(id);
+  const comments = (await t.g.listComments(id)).filter((c) => /^Edit undone/.test(c.content));
   assert.strictEqual(comments.length, 1);
   assert.match(comments[0].content, /Make this change in NEO or in the “Chapter 1 — Cold Front” Doc/);
   assert.match(comments[0].content, /Your change: “It rained on the old harbor\.”/);
@@ -281,4 +282,35 @@ test('changing how folders are named renames the folder and the Master', async (
   t.book.nameBy = 'subtitle';
   await t.sync();
   assert.strictEqual(t.files().find((f) => f.id === folder.id).name, 'Book One');
+});
+
+test('the reading-copy note is posted once, and never again after it is resolved', async () => {
+  const t = setup();
+  await t.sync();
+  const id = t.master().id;
+  t.g.comments.get(id).forEach((c) => { c.resolved = true; });
+  t.entries[0].blocks[0] = p('It poured on the harbor.');
+  await t.sync();
+  await t.sync();
+  assert.strictEqual((await t.g.listComments(id)).length, 1);
+});
+
+test('a Master from before (note in its page header) loses the header and gets the comment', async () => {
+  const t = setup();
+  await t.sync();
+  const id = t.master().id;
+  // as 1.4.4–1.4.8 made it
+  const r = await t.g.batchUpdate(id, [{ createHeader: { type: 'DEFAULT' } }]);
+  const hid = r.replies[0].createHeader.headerId;
+  await t.g.batchUpdate(id, [{ insertText: { location: { segmentId: hid, index: 0 }, text: 'Reading copy — comments welcome. Edits made here are undone automatically.' } }]);
+  t.g.comments.set(id, []);
+  const file = path.join(t.s.dir, 'books', 'book-uuid-1.json');
+  const st = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete st.headerChecked; delete st.noteDone;
+  fs.writeFileSync(file, JSON.stringify(st));
+  await t.sync();
+  assert.deepStrictEqual(Object.keys((await t.g.getDoc(id)).headers), []);
+  assert.strictEqual((await t.g.listComments(id)).length, 1);
+  await t.sync();
+  assert.strictEqual((await t.g.listComments(id)).length, 1);
 });

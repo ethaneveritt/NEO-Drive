@@ -34,6 +34,7 @@ const FOLDER = 'application/vnd.google-apps.folder';
 const DOC = 'application/vnd.google-apps.document';
 const POLL_MS = 15000;      // how often to look for edits made in Docs, when nothing changed here
 const MAX_COMMENTS = 5;     // per sync, for edits undone in the Master Doc
+const REMINDER = 'Reading copy — comments welcome. Edits made here are undone automatically.';
 
 const keysOf = (blocks) => blocks.map(B.blockKey);
 const sameBlocks = (a, b) => a.length === b.length && keysOf(a).every((k, i) => k === B.blockKey(b[i]));
@@ -327,8 +328,9 @@ class Sync {
       } else {
         const f = await this.api.createFile({ name, mimeType: DOC, parents: [st.folderId], appProperties: { neoBook: book.uuid, neoRole: 'master' } });
         st.masterId = f.id;
-        await this.addReminder(f.id);
+        st.headerChecked = true;
         await this.write(f.id, want, null, 'master');
+        await this.addReminder(st);
         st.masterBase = keysOf(want);
         st.masterOwner = owner;
         st.masterName = name;
@@ -338,6 +340,12 @@ class Sync {
       }
     }
     if (st.masterName !== name) { await this.api.updateFile(st.masterId, { name }); st.masterName = name; }
+    if (!st.headerChecked) {
+      await this.moveOldReminder(st, await this.api.getDoc(st.masterId));
+      st.masterVersion = null; // read the Doc again below
+    } else if (!st.noteDone && st.masterBase) {
+      await this.addReminder(st); // a note that failed to post before
+    }
     const lv = listed.get(st.masterId);
     const localChanged = !st.masterBase || !sameKeys(want, st.masterBase);
     const remoteMaybe = !lv || lv.version !== st.masterVersion;
@@ -380,27 +388,30 @@ class Sync {
     st.masterVersion = (await this.api.getFile(st.masterId)).version;
   }
 
-  // The page header every page of the Master Doc carries.
-  async addReminder(docId) {
+  // The note a new Master Doc opens with: a comment, not part of the page,
+  // so the writer can resolve it and it is gone for good. Posted once per
+  // Master, ever (st.noteDone).
+  async addReminder(st) {
+    if (st.noteDone) return;
     try {
-      const r = await this.api.batchUpdate(docId, [{ createHeader: { type: 'DEFAULT' } }]);
-      const headerId = r.replies && r.replies[0] && r.replies[0].createHeader && r.replies[0].createHeader.headerId;
-      if (!headerId) return;
-      const text = 'Reading copy — comments welcome. Edits made here are undone automatically.';
-      await this.api.batchUpdate(docId, [
-        { insertText: { location: { segmentId: headerId, index: 0 }, text } },
-        {
-          updateTextStyle: {
-            range: { segmentId: headerId, startIndex: 0, endIndex: text.length },
-            textStyle: { italic: true, fontSize: { magnitude: 9, unit: 'PT' }, weightedFontFamily: { fontFamily: 'Georgia', weight: 400 } },
-            fields: 'italic,fontSize,weightedFontFamily'
-          }
-        },
-        { updateParagraphStyle: { range: { segmentId: headerId, startIndex: 0, endIndex: text.length }, paragraphStyle: { alignment: 'CENTER' }, fields: 'alignment' } }
-      ]);
+      await this.api.createComment(st.masterId, REMINDER);
+      st.noteDone = true;
     } catch (err) {
-      this.log('master header', err); // a missing header is no reason to stop
+      this.log('master note', err); // tried again next sync
     }
+  }
+
+  // Masters made by NEO-Drive 1.4.4–1.4.8 carried the note in their page
+  // header instead: take that header out (once), and post the comment.
+  async moveOldReminder(st, doc) {
+    if (st.headerChecked) return;
+    const old = Object.values(doc.headers || {}).filter((h) =>
+      JSON.stringify(h.content || []).includes('Reading copy'));
+    if (old.length) {
+      await this.api.batchUpdate(st.masterId, old.map((h) => ({ deleteHeader: { headerId: h.headerId } })));
+    }
+    st.headerChecked = true;
+    if (old.length) await this.addReminder(st);
   }
 
   // Make the Doc read as `want`. Guarded by the Doc's revision: if it
