@@ -10,10 +10,10 @@ const fakeWin = () => {
 };
 const labels = (items) => items.map((i) => i.label || i.role || i.type);
 
-test('selected text gets Italic, Bold, Underline and Add Comment first, and Fix Apostrophes last', () => {
+test('selected text gets Italic, Bold, Underline and Add Comment first, and Fix Quotes last', () => {
   const win = fakeWin();
   const items = extendTextMenu(base, { isEditable: true, selectionText: 'dawn', x: 5, y: 6 }, win);
-  assert.deepStrictEqual(labels(items), ['Italic', 'Bold', 'Underline', 'separator', 'Add Comment…', 'separator', 'copy', 'separator', 'selectAll', 'separator', 'Fix Apostrophes in This Chapter']);
+  assert.deepStrictEqual(labels(items), ['Italic', 'Bold', 'Underline', 'separator', 'Add Comment…', 'separator', 'copy', 'separator', 'selectAll', 'separator', 'Fix Quotes in This Chapter']);
   items[0].click();
   items[4].click();
   items[items.length - 1].click();
@@ -28,7 +28,7 @@ test('no selection: no formatting items', () => {
   const items = extendTextMenu(base, { isEditable: true, selectionText: '' }, fakeWin());
   assert.ok(!labels(items).includes('Italic'));
   assert.ok(!labels(items).includes('Add Comment…'));
-  assert.ok(labels(items).includes('Fix Apostrophes in This Chapter'));
+  assert.ok(labels(items).includes('Fix Quotes in This Chapter'));
 });
 
 test('text that is not editable: menu untouched', () => {

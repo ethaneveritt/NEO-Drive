@@ -28,8 +28,8 @@ const js = (code) => wc.executeJavaScript(code, true);
 const tick = (ms = 40) => new Promise((resolve) => setTimeout(resolve, ms));
 const menu = (msg) => wc.send('menu', msg);
 
-const WRONG = "‘Til dawn, Mara said, ‘we keep the ‘90s rule: don't wake ‘em.’";
-const RIGHT = '’Til dawn, Mara said, ‘we keep the ’90s rule: don’t wake ’em.’';
+const WRONG = "\"‘Til dawn,” Mara said, “we keep the ‘90s rule: don't wake ‘em.\"";
+const RIGHT = '“’Til dawn,” Mara said, “we keep the ’90s rule: don’t wake ’em.”';
 
 const caretInChapter = () => js(`(() => {
   const p = document.querySelector('.chapter-body p');
@@ -42,12 +42,12 @@ const firstPara = () => js(`document.querySelector('.chapter-body p').textConten
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
-test('Fix Apostrophes rewrites the chapter and reports', async () => {
+test('Fix Quotes rewrites the chapter and reports', async () => {
   await caretInChapter();
   menu({ type: 'nd-fixApostrophes' });
   await tick(300);
   assert.equal(await firstPara(), RIGHT);
-  assert.match(await js(`document.querySelector('.nd-report h2').textContent`), /^Fixed \d+ apostrophes in /);
+  assert.match(await js(`document.querySelector('.nd-report h2').textContent`), /^Fixed \d+ quotes and apostrophes in /);
   if (process.env.SHOT) fs.writeFileSync(process.env.SHOT, (await wc.capturePage()).toPNG());
 });
 
@@ -81,7 +81,7 @@ test('right-click Italic sets the selection in italic', async () => {
   await js(`(() => {
     const p = document.querySelector('.chapter-body p');
     document.querySelector('.chapter-body').focus();
-    const r = document.createRange(); r.setStart(p.firstChild, 5); r.setEnd(p.firstChild, 9);
+    const r = document.createRange(); r.setStart(p.firstChild, 6); r.setEnd(p.firstChild, 10);
     getSelection().removeAllRanges(); getSelection().addRange(r);
   })()`);
   menu({ type: 'nd-format', cmd: 'italic' });

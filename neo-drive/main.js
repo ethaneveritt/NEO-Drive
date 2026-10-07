@@ -25,7 +25,7 @@ function extendTextMenu(items, params, win) {
   }
   const tail = [
     { type: 'separator' },
-    { label: t('Fix Apostrophes in This Chapter'), click: () => send({ type: 'nd-fixApostrophes', x: params.x, y: params.y }) }
+    { label: t('Fix Quotes in This Chapter'), click: () => send({ type: 'nd-fixApostrophes', x: params.x, y: params.y }) }
   ];
   return [...extra, ...items, ...tail];
 }
