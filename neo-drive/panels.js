@@ -80,14 +80,14 @@
     #nd-dock.tucked .nd-bar { display: none; }
     #nd-dock.tucked .nd-tab { display: block; }
     #nd-dock .nd-body { display: none; }
-    /* open: a pane the height of the window, shaded in from its edge */
-    #nd-dock.open { top: 0; bottom: calc(40px * var(--ui-zoom, 1)); width: var(--nd-dock-w); display: flex; flex-direction: column;
-      background: linear-gradient(to right, color-mix(in srgb, var(--pane) 55%, transparent), var(--pane) 22px);
-      border-left: 1px solid color-mix(in srgb, var(--muted) 18%, transparent); padding-top: 32px; }
-    #nd-dock.open .nd-bar { border: none; border-radius: 0; box-shadow: none; background: none; padding: 0 8px 8px 6px; flex-wrap: wrap; }
-    #nd-dock.open .nd-body { display: block; position: relative; flex: 1; min-height: 0; }
+    /* open: the bar stays as it is; below it, Chapter Notes and Notepad sit
+       in a soft box over the right of the page, and comment cards float free */
+    #nd-dock.open { bottom: calc(40px * var(--ui-zoom, 1) + 18px); width: var(--nd-dock-w); display: flex; flex-direction: column; align-items: flex-end; }
+    #nd-dock.open .nd-body { display: block; position: relative; flex: 1; min-height: 0; align-self: stretch; margin: 10px 16px 0 0; }
+    #nd-dock.open.boxed .nd-body { background: var(--pane); border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+      border-radius: 8px; box-shadow: 0 4px 22px rgba(0,0,0,.22); }
 
-    #nd-panel { position: absolute; inset: 4px 14px 14px 14px; display: flex; flex-direction: column; }
+    #nd-panel { position: absolute; inset: 14px 16px 14px 16px; display: flex; flex-direction: column; }
     #nd-panel .nd-p-head { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 10px; }
     #nd-panel .nd-p-head b { display: block; font-size: 13px; letter-spacing: 0; text-transform: none; font-weight: 600;
       color: inherit; margin-top: 3px; font-family: var(--body-font); }
@@ -97,14 +97,16 @@
     #nd-panel textarea::placeholder { color: var(--muted); opacity: .6; font-style: italic; }
     #nd-panel .nd-pad:empty::before { content: attr(data-ph); color: var(--muted); opacity: .6; font-style: italic; }
 
-    #nd-margin { position: absolute; inset: 0 12px 0 12px; overflow: hidden; pointer-events: none; }
+    #nd-margin { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
     .nd-card.nd-flag { border-left-color: var(--red); }
     .nd-card.nd-flag.active { border-left-color: var(--red); }
     .nd-card { position: absolute; left: 0; right: 0; pointer-events: auto; background: var(--bg);
-      border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-left: 3px solid #e2b93b;
+      border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-left: 3px solid var(--nd-google);
       border-radius: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; cursor: default;
       transition: top .12s ease, box-shadow .12s ease; }
-    .nd-card.active { box-shadow: 0 2px 14px rgba(0,0,0,.35); border-left-color: var(--accent); z-index: 2; }
+    .nd-card.active { box-shadow: 0 2px 14px rgba(0,0,0,.35); z-index: 2; }
+    .nd-card.mine, .nd-card.nd-draft, .nd-list .nd-item.mine { border-left-color: var(--nd-mine); }
+    .nd-card.active:not(.mine):not(.nd-flag):not(.nd-draft) { border-left-width: 4px; }
     .nd-card.lost { border-left-color: var(--muted); }
     .nd-c-who { font-weight: 600; font-size: 11.5px; }
     .nd-c-lost { font-size: 10.5px; color: var(--muted); font-style: italic; margin-top: 2px; }
@@ -117,8 +119,12 @@
     .nd-card textarea { width: 100%; min-height: 54px; background: var(--bg); color: inherit; border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
       border-radius: 4px; padding: 5px 6px; font: inherit; resize: vertical; outline: none; margin-top: 4px; }
     .nd-card textarea:focus { border-color: var(--accent); }
+    /* Google Docs comments yellow, your own blue, placeholders red */
+    :root { --nd-google: #e2b93b; --nd-mine: #5b8fd6; }
     ::highlight(nd-comment) { background: rgba(240, 196, 60, 0.28); }
     ::highlight(nd-comment-active) { background: rgba(240, 186, 40, 0.55); }
+    ::highlight(nd-mine) { background: rgba(91, 143, 214, 0.28); }
+    ::highlight(nd-mine-active) { background: rgba(91, 143, 214, 0.55); }
 
     #nd-notes-head { display: flex; justify-content: center; gap: 28px; margin-bottom: 40px; }
     #nd-notes-head button { background: none; border: none; font-family: var(--body-font); font-weight: 400; letter-spacing: 3px;
@@ -129,7 +135,7 @@
     .nd-list .nd-empty { text-align: center; color: #999; font-style: italic; padding: 30px 0; }
     .nd-list h3 { font-size: .8em; text-transform: uppercase; letter-spacing: 2px; color: #888; font-weight: 400; margin: 28px 0 10px; }
     .nd-list h3:first-child { margin-top: 0; }
-    .nd-list .nd-item { border-left: 3px solid #e2b93b; padding: 4px 0 4px 12px; margin-bottom: 16px; }
+    .nd-list .nd-item { border-left: 3px solid var(--nd-google); padding: 4px 0 4px 12px; margin-bottom: 16px; }
     .nd-list .nd-q { color: #888; font-style: italic; margin-bottom: 3px; }
     .nd-list .nd-c-actions { text-align: left; }
     .nd-list .nd-c-actions button { margin: 0 14px 0 0; font-size: 12px; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
@@ -182,6 +188,7 @@
     dock.hidden = !show;
     dock.classList.toggle('tucked', tucked && !mode);
     dock.classList.toggle('open', !!mode);
+    dock.classList.toggle('boxed', mode === 'chapter' || mode === 'notepad');
     $('#editor-view').classList.toggle('nd-docked', show && !!mode);
     panel.hidden = !show || (mode !== 'chapter' && mode !== 'notepad');
     margin.hidden = !show || mode !== 'comments';
@@ -191,7 +198,7 @@
       const key = Math.round(r.left) + ',' + Math.round(r.width) + ',' + Math.round($('#paper').getBoundingClientRect().width);
       if (key !== lastRoom) { lastRoom = key; layout(); }
     }
-    if (margin.hidden && CSS.highlights) { CSS.highlights.delete('nd-comment'); CSS.highlights.delete('nd-comment-active'); }
+    if (margin.hidden) unpaint();
   }
 
   // --------------------------------------------------------- Chapter Notes
@@ -432,15 +439,17 @@
   }
   function paint() {
     if (!CSS.highlights) return;
-    if (margin.hidden) { CSS.highlights.delete('nd-comment'); CSS.highlights.delete('nd-comment-active'); return; }
-    const all = [], act = [];
+    if (margin.hidden) { unpaint(); return; }
+    const sets = { 'nd-comment': [], 'nd-comment-active': [], 'nd-mine': [], 'nd-mine-active': [] };
     for (const c of comments) {
       const f = found.get(c.id);
-      if (f) (c.id === active ? act : all).push(f.range);
+      if (f) sets[(c.mine ? 'nd-mine' : 'nd-comment') + (c.id === active ? '-active' : '')].push(f.range);
     }
-    if (draft) act.push(draft.range);
-    CSS.highlights.set('nd-comment', new Highlight(...all));
-    CSS.highlights.set('nd-comment-active', new Highlight(...act));
+    if (draft) sets['nd-mine-active'].push(draft.range);
+    for (const [k, v] of Object.entries(sets)) CSS.highlights.set(k, new Highlight(...v));
+  }
+  function unpaint() {
+    if (CSS.highlights) for (const k of ['nd-comment', 'nd-comment-active', 'nd-mine', 'nd-mine-active']) CSS.highlights.delete(k);
   }
   const fmtWhen = (iso) => {
     if (!iso) return '';
@@ -522,7 +531,7 @@
     for (const c of comments) {
       const lost = !found.get(c.id);
       const el = document.createElement('div');
-      el.className = 'nd-card' + (c.id === active ? ' active' : '') + (lost ? ' lost' : '');
+      el.className = 'nd-card' + (c.mine ? ' mine' : '') + (c.id === active ? ' active' : '') + (lost ? ' lost' : '');
       el.dataset.id = c.id;
       el.innerHTML = cardHtml(c, lost);
       el.querySelector('.nd-c-body').textContent = c.content;
@@ -803,7 +812,7 @@
       for (const c of groups.get(k)) {
         if (c.flag) { notesBody.appendChild(flagItem(c.flag)); continue; }
         const el = document.createElement('div');
-        el.className = 'nd-item';
+        el.className = 'nd-item' + (c.mine ? ' mine' : '');
         el.dataset.id = c.id;
         el.innerHTML = `${c.quote ? `<div class="nd-q"></div>` : ''}${cardHtml(c, false)}`;
         if (c.quote) el.querySelector('.nd-q').textContent = '“' + (c.quote.length > 200 ? c.quote.slice(0, 200) + '…' : c.quote) + '”';

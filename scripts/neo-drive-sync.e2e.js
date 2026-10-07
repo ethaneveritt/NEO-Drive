@@ -244,6 +244,9 @@ test('select words, Add Comment: it goes to the chapter Doc, and is yours to edi
   const card = (await cards()).find((c) => /How many coins/.test(c));
   assert.match(card, /You/);
   assert.match(card, /Edit/);
+  // yours in blue, Google Docs' in yellow, placeholders in red
+  assert.equal(await js(`getComputedStyle([...document.querySelectorAll('#nd-margin .nd-card')].find((c) => /How many coins/.test(c.textContent))).borderLeftColor`), 'rgb(91, 143, 214)');
+  assert.equal(await js(`CSS.highlights.get('nd-mine').size + CSS.highlights.get('nd-mine-active').size`), 1);
   if (process.env.SHOT) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-add.png'), (await wc.capturePage()).toPNG());
   await js(`[...document.querySelectorAll('#nd-margin .nd-card')].find((c) => /How many coins/.test(c.textContent)).querySelector('.edit').click()`);
   await tick(100);
@@ -392,6 +395,7 @@ test('placeholders (Ctrl+Shift+X) are comments: the flag shows only while Commen
     return { dy: Math.abs(c.top - m.top), shown: m.height > 0 };
   })()`);
   assert.ok(pos.shown && pos.dy < 3, JSON.stringify(pos));
+  assert.equal(await js(`getComputedStyle(document.querySelector('#nd-margin .nd-flag')).borderLeftColor`), await js(`getComputedStyle(document.body).getPropertyValue('--red').trim() && (() => { const d = document.createElement('div'); d.style.color = 'var(--red)'; document.body.appendChild(d); const c = getComputedStyle(d).color; d.remove(); return c; })()`));
   if (process.env.SHOT) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-flag.png'), (await wc.capturePage()).toPNG());
   // Enter: back to the page, past the flag
   await js(`document.querySelector('#nd-margin .nd-flag textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
