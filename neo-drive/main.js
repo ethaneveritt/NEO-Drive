@@ -18,6 +18,8 @@ function extendTextMenu(items, params, win) {
       { label: t('Italic'), accelerator: 'CmdOrCtrl+I', registerAccelerator: false, click: () => send({ type: 'nd-format', cmd: 'italic' }) },
       { label: t('Bold'), accelerator: 'CmdOrCtrl+B', registerAccelerator: false, click: () => send({ type: 'nd-format', cmd: 'bold' }) },
       { label: t('Underline'), accelerator: 'CmdOrCtrl+U', registerAccelerator: false, click: () => send({ type: 'nd-format', cmd: 'underline' }) },
+      { type: 'separator' },
+      { label: t('Add Comment…'), accelerator: 'CmdOrCtrl+Alt+M', registerAccelerator: false, click: () => send({ type: 'nd-addComment' }) },
       { type: 'separator' }
     );
   }
@@ -172,6 +174,28 @@ async function handle(_e, msg) {
         return { error: err.offline ? 'offline' : 'failed', message: String((err && err.message) || err) };
       }
     }
+    case 'addComment': {
+      // a comment made in NEO on a passage: it goes to the chapter's Doc
+      if (!d.api.connected) return { error: 'not-connected' };
+      const links = d.sync.links(String(msg.uuid || ''));
+      const docId = links.chapters[msg.chId];
+      if (!docId) return { error: 'not-synced', message: 'This chapter hasn’t been synced to Google Drive yet.' };
+      try {
+        const c = await d.api.createComment(docId, String(msg.content || ''), String(msg.quote || ''));
+        return { ok: true, comment: { id: c.id, docId, chId: msg.chId, where: msg.where || '', mine: true, author: (c.author && c.author.displayName) || '', content: c.content, quote: String(msg.quote || ''), created: c.createdTime || '', replies: [] } };
+      } catch (err) {
+        return { error: err.offline ? 'offline' : 'failed', message: String((err && err.message) || err) };
+      }
+    }
+    case 'editComment': {
+      if (!d.api.connected) return { error: 'not-connected' };
+      try {
+        await d.api.updateComment(String(msg.docId), String(msg.commentId), String(msg.content || ''));
+        return { ok: true };
+      } catch (err) {
+        return { error: err.offline ? 'offline' : 'failed', message: String((err && err.message) || err) };
+      }
+    }
     case 'forget': {
       // the window couldn't take in what Docs sent: the next sync treats
       // those chapters as changed on both sides, so both versions are kept
@@ -191,6 +215,7 @@ async function fakeOp(g, msg) {
   if (msg.do === 'type') { await g.typeInDoc(msg.id, g.findText(msg.id, msg.before), msg.text); return true; }
   if (msg.do === 'comments') return g.listComments(msg.id);
   if (msg.do === 'readerComment') return g.addReaderComment(msg.id, msg.comment);
+  if (msg.do === 'noteDoc') return [...g.files.values()].find((f) => f.appProperties.neoNote === msg.key);
   return null;
 }
 

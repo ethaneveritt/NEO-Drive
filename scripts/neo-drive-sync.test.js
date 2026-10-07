@@ -418,3 +418,57 @@ test('resolving from NEO resolves the comment in Docs', async () => {
   assert.deepStrictEqual(r.comments, []);
   assert.strictEqual(c.resolved, true);
 });
+
+test('Notes folder: Notepad and Chapter Notes go both ways; Darlings is a copy', async () => {
+  const t = setup();
+  const notes = { notepad: [p('Idea: the keeper lies.'), p('Check Mara’s height.')], chapters: { c1: 'Rain sets the mood.\nKeep it short.' }, darlings: [{ label: 'Chapter 2', date: '2026-10-07', text: 'A cut line.' }] };
+  await t.sync({ notes });
+  const notesFolder = t.files().find((f) => f.appProperties.neoRole === 'notes');
+  const folder = t.files().find((f) => f.mimeType.includes('folder') && !f.appProperties.neoRole);
+  assert.deepStrictEqual(notesFolder.parents, [folder.id]);
+  const doc = (key) => t.files().find((f) => f.appProperties.neoNote === key);
+  assert.deepStrictEqual(['notepad', 'chapternotes', 'darlings'].map((k) => doc(k).name), ['Notepad', 'Chapter Notes', 'Darlings']);
+  assert.match(t.g.docText(doc('chapternotes').id), /^1\.1: Cold Front\nRain sets the mood\.\nKeep it short\.\n1\.2: The Keeper’s House\n/);
+  // typed into the Notepad Doc on a phone: comes back
+  const np = doc('notepad').id;
+  await t.g.typeInDoc(np, t.g.findText(np, 'Check'), 'New thought.\n');
+  const r = await t.sync({ notes, force: true });
+  assert.deepStrictEqual(r.notesPulls.notepad.map((b) => b.text), ['Idea: the keeper lies.', 'New thought.', 'Check Mara’s height.']);
+  // a note added under chapter 2 in Docs: comes back for that chapter
+  const cn = doc('chapternotes').id;
+  const at = t.g.docText(cn).indexOf('1.2: The Keeper’s House\n') + '1.2: The Keeper’s House\n'.length + 1;
+  await t.g.typeInDoc(cn, at, 'The house is a trap.\n');
+  const r2 = await t.sync({ notes: { ...notes, notepad: r.notesPulls.notepad }, force: true });
+  assert.deepStrictEqual(r2.notesPulls.chapternotes, { c1: 'Rain sets the mood.\nKeep it short.', c2: 'The house is a trap.' });
+  // typed into Darlings: set back
+  const dl = doc('darlings').id;
+  await t.g.typeInDoc(dl, t.g.findText(dl, 'A cut'), 'Oops ');
+  await t.sync({ notes: { ...notes, notepad: r.notesPulls.notepad, chapters: r2.notesPulls.chapternotes }, force: true });
+  assert.doesNotMatch(t.g.docText(dl), /Oops/);
+});
+
+test('notes edited in NEO and in Docs at once: both kept', async () => {
+  const t = setup();
+  const notes = { notepad: [p('One.')], chapters: {}, darlings: [] };
+  await t.sync({ notes });
+  const np = t.files().find((f) => f.appProperties.neoNote === 'notepad').id;
+  await t.g.typeInDoc(np, t.g.findText(np, 'One'), 'Phone. ');
+  const r = await t.sync({ notes: { ...notes, notepad: [p('One. Desk.')] }, force: true });
+  assert.deepStrictEqual(r.notesConflicts.notepad.map((b) => b.text), ['Phone. One.']);
+  assert.match(t.g.docText(np), /One\. Desk\./);
+});
+
+test('a comment made in NEO goes to the chapter Doc quoting its passage; mine can be edited', async () => {
+  const t = setup();
+  await t.sync();
+  const id = t.chapterDoc('c1').id;
+  const c = await t.g.createComment(id, 'Too slow here.', 'Mara counted coins.');
+  const r = await t.sync({ force: true });
+  const got = r.comments.find((x) => x.id === c.id);
+  assert.deepStrictEqual([got.mine, got.quote, got.content], [true, 'Mara counted coins.', 'Too slow here.']);
+  await t.g.updateComment(id, c.id, 'Too slow — cut a beat.');
+  const r2 = await t.sync({ force: true });
+  assert.strictEqual(r2.comments.find((x) => x.id === c.id).content, 'Too slow — cut a beat.');
+  const reader = t.g.addReaderComment(id, { content: 'Nice.' });
+  await assert.rejects(t.g.updateComment(id, reader.id, 'changed'), /permission/);
+});

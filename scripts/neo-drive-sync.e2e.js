@@ -180,27 +180,161 @@ test('Name Book Folders By → Title: Subtitle renames the folder', async () => 
   assert.equal((await master()).name, 'The Lighthouse: Book One');
 });
 
-test('Google Docs comments show in the Notes & Comments pane; Go to finds the passage; Resolve resolves it', async () => {
+const toggle = (m) => js(`document.querySelector('#nd-toggles button[data-m="${m}"]').click()`);
+const cards = () => js(`[...document.querySelectorAll('#nd-margin .nd-card')].map((c) => c.textContent.replace(/\\s+/g, ' ').trim())`);
+
+test('Google Docs comments sit in the margin beside their passage, highlighted; clicking Comments again puts them away', async () => {
   const [c1] = await chIds();
   const doc = await docFor(c1);
   await fake({ do: 'readerComment', id: doc.id, comment: { content: 'Love this line.', quote: 'rained on the harbor', author: 'Faye', replies: [{ content: 'Same!', author: 'Sam' }] } });
   await sync();
-  await js(`document.getElementById('side-pane').classList.add('open')`);
+  assert.equal(await js(`document.querySelector('#nd-toggles').hidden`), false);
+  assert.match(await js(`document.querySelector('#nd-toggles [data-m="comments"]').textContent`), /Comments\s*1/);
+  await toggle('comments');
   await tick(300);
-  const card = () => js(`(() => { const c = document.querySelector('.nd-gc'); return c ? c.textContent.replace(/\\s+/g, ' ').trim() : ''; })()`);
-  assert.match(await card(), /Love this line\./);
-  assert.match(await card(), /Faye/);
-  assert.match(await card(), /Same!/);
+  const [card] = await cards();
+  assert.match(card, /Faye/);
+  assert.match(card, /Love this line\./);
+  assert.match(card, /Same!/);
+  assert.match(card, /Resolve/);
+  assert.doesNotMatch(card, /Edit/, 'not mine: no Edit');
+  assert.equal(await js(`CSS.highlights.get('nd-comment').size + CSS.highlights.get('nd-comment-active').size`), 1);
+  assert.equal(await js(`[...CSS.highlights.get('nd-comment')][0].toString()`), 'rained on the harbor');
+  // level with its words, to the right of the page
+  const pos = await js(`(() => {
+    const r = [...CSS.highlights.get('nd-comment')][0].getClientRects()[0];
+    const c = document.querySelector('#nd-margin .nd-card').getBoundingClientRect();
+    const page = document.getElementById('paper').getBoundingClientRect();
+    return { dy: Math.abs(c.top - r.top), right: c.left >= page.right };
+  })()`);
+  assert.ok(pos.dy < 3, JSON.stringify(pos));
+  assert.ok(pos.right, 'beside the page');
   if (process.env.SHOT) fs.writeFileSync(process.env.SHOT, (await wc.capturePage()).toPNG());
-  await js(`document.querySelector('.nd-gc .s-go').click()`);
-  await tick(300);
-  assert.equal(await js('getSelection().toString()'), 'rained on the harbor');
-  await js(`document.querySelector('.nd-gc .s-done').click()`);
+  await toggle('comments');
   await tick(500);
-  assert.equal(await card(), '');
+  assert.equal(await js(`document.getElementById('nd-margin').hidden`), true);
+  assert.equal(await js(`CSS.highlights.has('nd-comment')`), false);
+  await toggle('comments');
+  await tick(300);
+  await js(`document.querySelector('#nd-margin .nd-card .resolve').click()`);
+  await tick(500);
+  assert.deepEqual(await cards(), []);
   const all = await fake({ do: 'comments', id: doc.id });
   assert.equal(all.find((c) => c.content === 'Love this line.').resolved, true);
-  await js(`document.getElementById('side-pane').classList.remove('open')`);
+});
+
+test('select words, Add Comment: it goes to the chapter Doc, and is yours to edit', async () => {
+  const [c1] = await chIds();
+  const doc = await docFor(c1);
+  await js(`(() => {
+    const p = [...document.querySelectorAll('.chapter[data-id="${c1}"] .chapter-body p')].find((x) => x.textContent.startsWith('Mara'));
+    p.closest('.chapter-body').focus();
+    const r = document.createRange(); r.setStart(p.firstChild, 0); r.setEnd(p.firstChild, 'Mara counted coins'.length);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+  })()`);
+  wc.send('menu', { type: 'nd-addComment' });
+  await tick(300);
+  assert.equal(await js(`document.activeElement === document.querySelector('#nd-margin .nd-draft textarea')`), true);
+  await js(`document.execCommand('insertText', false, 'How many coins?')`);
+  await js(`document.querySelector('#nd-margin .nd-draft .go').click()`);
+  await tick(500);
+  let mine = (await fake({ do: 'comments', id: doc.id })).find((c) => c.content === 'How many coins?');
+  assert.ok(mine, 'in the Doc');
+  assert.equal(mine.quotedFileContent.value, 'Mara counted coins');
+  const card = (await cards()).find((c) => /How many coins/.test(c));
+  assert.match(card, /You/);
+  assert.match(card, /Edit/);
+  if (process.env.SHOT) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-add.png'), (await wc.capturePage()).toPNG());
+  await js(`[...document.querySelectorAll('#nd-margin .nd-card')].find((c) => /How many coins/.test(c.textContent)).querySelector('.edit').click()`);
+  await tick(100);
+  await js(`(() => { const ta = document.querySelector('#nd-margin .nd-card textarea'); ta.value = 'How many coins, exactly?'; ta.closest('.nd-card').querySelector('.go').click(); })()`);
+  await tick(500);
+  mine = (await fake({ do: 'comments', id: doc.id })).find((c) => c.id === mine.id);
+  assert.equal(mine.content, 'How many coins, exactly?');
+  assert.ok((await cards()).some((c) => /How many coins, exactly\?/.test(c)));
+});
+
+test('the Notes tab: Notepad on top, Comments listed with Jump to comment', async () => {
+  await js(`switchTab('notes')`);
+  await tick(400);
+  assert.deepEqual(await js(`[...document.querySelectorAll('#nd-notes-head button')].map((b) => [b.textContent, b.classList.contains('on')])`),
+    [['Notepad', true], ['Comments', false], ['Chapter Notes', false]]);
+  assert.equal(await js(`document.getElementById('aux-editor').hidden`), false);
+  assert.equal(await js(`document.getElementById('nd-toggles').hidden`), true, 'the margin buttons belong to the manuscript');
+  await js(`document.querySelector('#nd-notes-head [data-v="comments"]').click()`);
+  await tick(200);
+  assert.equal(await js(`document.getElementById('aux-editor').hidden`), true);
+  const list = await js(`document.querySelector('.nd-list').textContent.replace(/\\s+/g, ' ')`);
+  assert.match(list, /Chapter 1/);
+  assert.match(list, /Mara counted coins/);
+  assert.match(list, /Jump to comment/);
+  await js(`document.querySelector('.nd-list .nd-item .go').click()`);
+  await tick(400);
+  assert.equal(await js('currentTab'), 'manuscript');
+  assert.equal(await js('NeoDrivePanels.mode'), 'comments');
+  assert.match(await js(`document.querySelector('#nd-margin .nd-card.active').textContent`), /How many coins/);
+  // leaving and coming back to Notes opens the Notepad again, and Outline shows its own title
+  await js(`switchTab('outline')`);
+  await tick(200);
+  assert.equal(await js(`document.getElementById('nd-notes-head').hidden`), true);
+  assert.equal(await js(`document.getElementById('aux-title').hidden`), false);
+  await js(`switchTab('manuscript')`);
+  await tick(200);
+});
+
+test('Chapter Notes and Notepad open beside the page, one at a time, and go to a Notes folder in Drive', async () => {
+  const [c1] = await chIds();
+  await toggle('chapter');
+  await tick(200);
+  assert.equal(await js(`document.getElementById('nd-margin').hidden`), true, 'one at a time');
+  assert.equal(await js(`document.getElementById('nd-panel').hidden`), false);
+  await js(`document.querySelector('.chapter[data-id="${c1}"] .chapter-body').focus()`);
+  await tick(500);
+  assert.match(await js(`document.querySelector('#nd-panel b').textContent`), /Cold Front/);
+  await js(`(() => { const ta = document.querySelector('#nd-panel textarea'); ta.focus(); document.execCommand('insertText', false, 'Make the rain colder.'); })()`);
+  await tick(800);
+  assert.deepEqual(await js(`window.neo.readJSON(book.id, 'neo-drive-chapter-notes', {})`), { [c1]: 'Make the rain colder.' });
+  await toggle('notepad');
+  await tick(300);
+  assert.equal(await js(`document.querySelector('#nd-panel textarea')`), null);
+  await js(`(() => { const box = document.querySelector('#nd-panel .nd-pad'); box.focus(); document.execCommand('insertText', false, 'Idea one.'); })()`);
+  await tick(1000);
+  assert.match(await js(`window.neo.readAux(book.id, 'notes')`), /Idea one\./);
+  if (process.env.SHOT) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-notepad.png'), (await wc.capturePage()).toPNG());
+  await toggle('notepad');
+  await tick(200);
+  assert.equal(await js(`document.getElementById('nd-panel').hidden`), true);
+  await sync();
+  const all = await files();
+  const notes = all.find((f) => f.appProperties.neoRole === 'notes');
+  const folder = all.find((f) => f.mimeType.includes('folder') && !f.appProperties.neoRole);
+  assert.equal(notes.name, 'Notes');
+  assert.deepEqual(notes.parents, [folder.id], 'in the book folder, not Chapters');
+  const byKey = async (k) => fake({ do: 'noteDoc', key: k });
+  assert.match(await fake({ do: 'text', id: (await byKey('notepad')).id }), /Idea one\./);
+  assert.match(await fake({ do: 'text', id: (await byKey('chapternotes')).id }), /1\.1: Cold Front[^\n]*\nMake the rain colder\.\n/);
+  assert.ok(await byKey('darlings'));
+});
+
+test('notes written in the Docs come back into NEO', async () => {
+  const [c1] = await chIds();
+  const pad = await fake({ do: 'noteDoc', key: 'notepad' });
+  await fake({ do: 'type', id: pad.id, before: 'Idea one.', text: 'Idea zero.\n' });
+  const cn = await fake({ do: 'noteDoc', key: 'chapternotes' });
+  await fake({ do: 'type', id: cn.id, before: 'Make the rain colder.', text: 'Mara needs a limp.\n' });
+  await sync();
+  await tick(300);
+  const html = await js(`window.neo.readAux(book.id, 'notes')`);
+  assert.match(html, /Idea zero\.[\s\S]*Idea one\./);
+  assert.equal(await js(`window.neo.readJSON(book.id, 'neo-drive-chapter-notes', {})`).then((v) => v[c1]), 'Mara needs a limp.\nMake the rain colder.');
+  await js(`switchTab('notes')`);
+  await tick(400);
+  assert.match(await js(`document.getElementById('aux-editor').textContent`), /Idea zero\./);
+  await js(`document.querySelector('#nd-notes-head [data-v="chapter"]').click()`);
+  await tick(200);
+  assert.equal(await js(`document.querySelector('.nd-list textarea').value`), 'Mara needs a limp.\nMake the rain colder.');
+  await js(`switchTab('manuscript')`);
+  await tick(200);
 });
 
 test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () => {
