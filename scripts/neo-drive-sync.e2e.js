@@ -385,11 +385,16 @@ test('a part is a folder holding its chapters; the Master gets a part page', asy
   const find = (t) => paras.find((x) => x.text === t);
   assert.ok(find('Contents'), paras.map((x) => x.text).slice(0, 12).join(' | '));
   assert.ok(find('Part I: The Crossing'), 'contents line for the part');
+  const partLine = find('Part I: The Crossing');
+  assert.deepEqual(partLine.runs.map((r) => [r.content.replace(/\n$/, ''), !!r.textStyle.italic, !!r.textStyle.bold]), [['Part I: ', false, false], ['The Crossing', true, false]]);
+  const tocCh = paras.find((x) => /^Chapter 1: Cold Front/.test(x.text) && !x.ps.pageBreakBefore);
+  assert.deepEqual(tocCh.runs.map((r) => [r.content.replace(/\n$/, ''), !!r.textStyle.italic, !!r.textStyle.bold]).slice(0, 2), [['Chapter 1: ', false, false], [tocCh.runs[1].content.replace(/\n$/, ''), true, false]]);
   const partHead = find('PART I:');
   assert.equal(partHead.ps.pageBreakBefore, true);
-  assert.deepEqual([partHead.runs[0].textStyle.fontSize.magnitude, partHead.runs[0].textStyle.bold], [12, true]);
+  assert.deepEqual([partHead.runs[0].textStyle.fontSize.magnitude, !!partHead.runs[0].textStyle.bold, !!partHead.runs[0].textStyle.italic], [20, true, false]);
   const partTitle = find('The Crossing');
-  assert.deepEqual([partTitle.runs[0].textStyle.fontSize.magnitude, partTitle.runs[0].textStyle.bold, partTitle.runs[0].textStyle.italic], [12, true, true]);
+  assert.deepEqual([partTitle.runs[0].textStyle.fontSize.magnitude, !!partTitle.runs[0].textStyle.bold, !!partTitle.runs[0].textStyle.italic], [14, false, true]);
+  assert.equal(partTitle.ps.alignment, 'CENTER');
   const ch1 = paras.find((x) => /^Chapter 1: /.test(x.text) && x.ps.pageBreakBefore);
   assert.ok(paras.every((x) => x.ps.namedStyleType === 'NORMAL_TEXT'), 'plain paragraphs only');
   assert.ok(ch1 && ch1.ps.pageBreakBefore, 'chapter heading on a new page');

@@ -242,6 +242,7 @@
   // sits in), the parts (folders), and the Master Manuscript laid out the way
   // NEO's own Word export lays a book out (title page, contents, a page per
   // part) in the chapters' own look.
+  const tocMarks = (text, italicFrom) => (italicFrom < text.length ? [[italicFrom, text.length, 'i']] : []);
   function bookModel() {
     if (!book.uuid) { book.uuid = crypto.randomUUID(); saveMeta(); }
     const entries = [];
@@ -276,15 +277,24 @@
         // part's page in the Master, "PART I:" over its title
         const partName = partSkip.get(chId) ? `${chapterName(chId)}: ${all[0].text}` : chapterName(chId);
         parts.push({ partId: chId, name: partName });
-        toc.push(m({ k: 'p', text: partName, ind: 'flush', sa: 12 }, partName));
-        // the part's page: a little way down a new page
-        heads.forEach((h, i) => body.push(m(i ? h : { ...h, pb: true, sa: 72 }, partName)));
+        // in the contents, the part's title in italic: "Part I: *The Crossing*"
+        const partFrom = partSkip.get(chId) ? chapterName(chId).length + 2 : partName.length;
+        toc.push(m({ k: 'p', text: partName, marks: tocMarks(partName, partFrom), ind: 'flush', sa: 12 }, partName));
+        // the part's page, set like the title page: a little way down a new
+        // page, "PART I:" 20 pt bold over its title, 14 pt italic
+        heads.forEach((h, i) => body.push(m(i
+          ? { k: 'p', text: h.text, marks: [[0, h.text.length, 'i']], align: 'center', sz: 14, ls: 100 }
+          : { ...h, pb: true, sa: 72, sz: 20, ls: 100 }, partName)));
         for (const b of blocks) body.push(m(b, partName));
         if (blocks.length) entries.push({ chId, kind, heads, name: partName, label: partName, section, blocks, part: chId });
         continue;
       }
       entries.push({ chId, kind, heads, name, label, section, blocks, part });
-      if (heads.length && !FRONT_PAGES.includes(kind)) toc.push(m({ k: 'p', text: name, ind: part ? 'poetry' : 'flush' }, name));
+      // in the contents, the chapter's title in italic, as in its heading
+      if (heads.length && !FRONT_PAGES.includes(kind)) {
+        const it = heads.length === 1 ? (heads[0].marks || []).find((x) => String(x[2]).includes('i')) : null;
+        toc.push(m({ k: 'p', text: name, marks: tocMarks(name, it ? it[0] : name.length), ind: part ? 'poetry' : 'flush' }, name));
+      }
       // each chapter starts a new page
       heads.forEach((h, i) => body.push(m(i ? h : { ...h, pb: true }, name)));
       for (const b of blocks) body.push(m(b, name));

@@ -47,7 +47,7 @@ The book's folder and the Master Manuscript can each be named by the book's titl
 
 The **chapter Docs** are set like a manuscript: Times New Roman 12, double-spaced, a bold centered heading (“Chapter 2: *Low Tide*”), `***` for scene breaks, italics and bold as you wrote them.
 
-The **Master Manuscript** is laid out the way NEO's own Word export lays out a book — a title page, a contents page, a page for each part (“PART I:” over its title), each chapter starting a new page — in the chapters' own plain look.
+The **Master Manuscript** is laid out the way NEO's own Word export lays out a book — a title page, a contents page, a page for each part (“PART I:” over its title), each chapter starting a new page — in the chapters' own plain look; part pages are set like the title page (“PART I:” 20 pt bold over the part's title, 14 pt italic), and the contents show part and chapter titles in italic.
 
 Move a chapter to another part in NEO and its Doc moves folders with it. Move the book's folder anywhere in your Drive and it keeps working.
 
