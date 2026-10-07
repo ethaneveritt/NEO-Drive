@@ -111,6 +111,9 @@ async function main() {
       assert.equal(ok && ok.misspelledWord, '', 'a correct word is not flagged');
     });
     await check('choosing a suggestion fixes the word in the page and on disk', async () => {
+      // as a person does: right-click the word, then pick the suggestion
+      const params = await rightClickWord('teh');
+      assert.equal(params && params.misspelledWord, 'teh');
       wc.replaceMisspelling('the');
       await tick(300);
       assert.match(await js(`document.querySelector('.chapter-body').textContent`), /I saw the cat/);
