@@ -3,49 +3,74 @@
 //
 // A "block" is one paragraph as NEO-Drive understands it:
 //   { k, text, marks, align, ind }
-//     k      'title' | 'subtitle' | 'part' | 'chapter' | 'heading' | 'p' | 'brk'
+//     k      what the paragraph is: 'p' (prose), 'brk' (***), or a heading
+//            kind of the Doc's profile (see PROFILES)
 //     text   the paragraph's characters, without its newline. A line break
 //            inside a paragraph is '\u000b', as Google Docs stores it.
 //     marks  [[start, end, flags]] — flags a string of b i u x (bold,
-//            italic, underline, strikethrough); body paragraphs only
+//            italic, underline, strikethrough), beyond the kind's own look
 //     align  'left' | 'center' | 'right' | 'justify'
-//     ind    'normal' | 'flush' | 'poetry' — first-line indent, none, or
-//            a poem's left indent; body paragraphs only
+//     ind    'normal' | 'flush' | 'poetry' — first-line indent, none, or a
+//            left indent (a poem; a contents line inside a part)
+//
+// Two looks ("profiles"):
+//   chapter — the chapter Docs, set like Ethan's manuscript pages: Times New
+//             Roman 12, double-spaced, bold centered headings
+//   master  — the Master Manuscript, set like NEO's own Word export: Georgia
+//             12 at 1.5 lines, a title page, a contents page, a page per part,
+//             chapter headings in capitals each on a new page
 //
 // Everything that decides whether two blocks are "the same" lives in
-// blockKey(), and fromDoc() reads back exactly what toRequests() writes, so
-// a Doc NEO-Drive wrote reads back as the blocks it was written from.
+// blockKey(), and readDoc() reads back exactly what editRequests() writes,
+// so a Doc NEO-Drive wrote reads back as the blocks it was written from.
 (function (root) {
   'use strict';
 
-  const FONT = 'Times New Roman';
   const PT = (n) => ({ magnitude: n, unit: 'PT' });
-  const INDENT = 36; // half an inch
-
-  // the Docs paragraph style each kind is written with, and read back by
-  const NAMED = {
-    title: 'TITLE', subtitle: 'SUBTITLE', part: 'HEADING_1', chapter: 'HEADING_2', heading: 'HEADING_3',
-    parttitle: 'HEADING_4', p: 'NORMAL_TEXT', brk: 'NORMAL_TEXT'
-  };
-  const KIND_OF_NAMED = { TITLE: 'title', SUBTITLE: 'subtitle', HEADING_1: 'part', HEADING_2: 'chapter', HEADING_3: 'heading', HEADING_4: 'parttitle' };
-  // The manuscript's look (Ethan's pages): everything Times New Roman 12,
-  // double-spaced; a chapter heads its page in bold, "Chapter 2: Title" with
-  // the title in italic; a part has a page of its own, "PART I:" over its
-  // title in italic, larger, a little way down the page.
-  const HEADING_SIZE = { title: 20, subtitle: 14, part: 18, parttitle: 18, chapter: 12, heading: 12 };
-  const SPACE_ABOVE = { part: 72 };
-  const NEW_PAGE = new Set(['part', 'chapter', 'heading']); // start a page (in the Master)
   const ALIGN_TO_DOCS = { left: 'START', center: 'CENTER', right: 'END', justify: 'JUSTIFIED' };
   const ALIGN_FROM_DOCS = { START: 'left', CENTER: 'center', END: 'right', JUSTIFIED: 'justify' };
   const FLAG_FIELDS = { b: 'bold', i: 'italic', u: 'underline', x: 'strikethrough' };
   const BREAK_TEXT = '***';
 
+  // Per kind: the Docs named style it is written with (and read back by),
+  // its size, the flags every character carries (base), spacing in points,
+  // alignment, and whether it starts a new page.
+  const PROFILES = {
+    chapter: {
+      font: 'Times New Roman', size: 12, spacing: 200, indent: 36, brkAbove: 0,
+      kinds: {
+        title: { named: 'TITLE', size: 20, base: 'b', spacing: 100, below: 24 },
+        subtitle: { named: 'SUBTITLE', size: 14, base: 'b', spacing: 100 },
+        part: { named: 'HEADING_1', size: 12, base: 'b' },
+        chapter: { named: 'HEADING_2', size: 12, base: 'b' },
+        heading: { named: 'HEADING_3', size: 12, base: 'b' },
+        parttitle: { named: 'HEADING_4', size: 12, base: 'b' }
+      }
+    },
+    master: {
+      font: 'Georgia', size: 12, spacing: 150, indent: 24, brkAbove: 12,
+      kinds: {
+        title: { named: 'TITLE', size: 28, base: 'b', above: 150 },
+        subtitle: { named: 'SUBTITLE', size: 16, base: 'i' },
+        author: { named: 'HEADING_5', size: 12, above: 40 },
+        heading: { named: 'HEADING_3', size: 14, above: 60, below: 18, page: true },
+        chapter: { named: 'HEADING_2', size: 14, above: 60, below: 18, page: true },
+        part: { named: 'HEADING_1', size: 14, above: 180, page: true },
+        parttitle: { named: 'HEADING_4', size: 24, above: 24, below: 24 },
+        // contents lines: a part's line has a little space above it
+        toc: { named: 'HEADING_6', size: 12, align: 'left', indents: true },
+        tocpart: { named: 'HEADING_6', size: 12, align: 'left', above: 12, indents: true }
+      }
+    }
+  };
+  const prof = (name) => PROFILES[name] || PROFILES.chapter;
   const isBody = (k) => k === 'p';
 
   // ------------------------------------------------------------ normalize
   // One canonical form, so blocks built from NEO and blocks read from a Doc
   // compare equal when they say the same thing.
-  function normalize(b) {
+  function normalize(b, profile = 'chapter') {
+    const P = prof(profile);
     const k = b.k || 'p';
     const out = { k, text: String(b.text || ''), marks: [], align: 'left', ind: 'flush' };
     if (k === 'brk') {
@@ -54,9 +79,12 @@
       return out;
     }
     if (k !== 'p') {
-      // headings are bold through and through; what's left to say is italic
-      out.align = 'center';
-      out.marks = normMarks((b.marks || []).map(([s0, e0, f]) => [s0, e0, String(f || '').replace(/b/g, '')]), out.text.length);
+      const spec = P.kinds[k] || {};
+      out.align = spec.align || 'center';
+      if (spec.indents) out.ind = b.ind === 'poetry' ? 'poetry' : 'flush';
+      // what every character of the kind carries isn't a mark of its own
+      const base = spec.base || '';
+      out.marks = normMarks((b.marks || []).map(([s0, e0, f]) => [s0, e0, [...String(f || '')].filter((c) => !base.includes(c)).join('')]), out.text.length);
       return out;
     }
     out.align = ALIGN_TO_DOCS[b.align] ? b.align : 'left';
@@ -116,7 +144,8 @@
   // Suggested insertions take up room too, but are not the writer's text
   // yet, so they stay out of the block; `map` turns a block offset back
   // into a Doc index.
-  function readDoc(doc) {
+  function readDoc(doc, profile = 'chapter') {
+    const P = prof(profile);
     const content = (doc && doc.body && doc.body.content) || [];
     const paras = [];
     for (const el of content) {
@@ -145,13 +174,11 @@
         }
       }
       map.push(el.endIndex - 1); // the paragraph's own newline
-      const named = ps.namedStyleType || 'NORMAL_TEXT';
-      let k = KIND_OF_NAMED[named] || 'p';
+      const k = kindOf(P, ps, text);
       const align = ALIGN_FROM_DOCS[ps.alignment] || 'left';
-      const first = (ps.indentFirstLine && ps.indentFirstLine.magnitude) || 0;
-      const start = (ps.indentStart && ps.indentStart.magnitude) || 0;
-      const ind = start >= INDENT / 2 ? 'poetry' : first >= INDENT / 2 ? 'normal' : 'flush';
-      if (k === 'p' && text === BREAK_TEXT && align === 'center') k = 'brk';
+      const first = mag(ps.indentFirstLine);
+      const left = mag(ps.indentStart);
+      const ind = left >= 6 ? 'poetry' : first >= 6 ? 'normal' : 'flush';
       const marks = [];
       for (let i = 0; i < flags.length;) {
         let j = i + 1;
@@ -159,27 +186,47 @@
         if (flags[i]) marks.push([i, j, flags[i]]);
         i = j;
       }
-      const block = text.trim() === '' && k !== 'brk' ? null : normalize({ k, text, marks, align, ind });
+      const block = text.trim() === '' && k !== 'brk' ? null : normalize({ k, text, marks, align, ind }, profile);
       paras.push({ start: el.startIndex, end: el.endIndex, text, map, block });
     }
     const end = paras.length ? paras[paras.length - 1].end : 2;
     return { paras, blocks: paras.filter((p) => p.block).map((p) => p.block), end };
   }
+  const mag = (d) => (d && d.magnitude) || 0;
 
-  const fromDoc = (doc) => readDoc(doc).blocks;
+  // the kind a paragraph was written as, from its named style (and, for the
+  // two kinds that share one, the space above it)
+  function kindOf(P, ps, text) {
+    const named = ps.namedStyleType || 'NORMAL_TEXT';
+    if (named === 'NORMAL_TEXT') {
+      return text === BREAK_TEXT && ps.alignment === 'CENTER' ? 'brk' : 'p';
+    }
+    const hits = Object.entries(P.kinds).filter(([, s]) => s.named === named);
+    if (!hits.length) return 'p';
+    if (hits.length > 1) {
+      const above = mag(ps.spaceAbove);
+      const best = hits.find(([, s]) => (s.above || 0) > 0 === above > 0);
+      if (best) return best[0];
+    }
+    return hits[0][0];
+  }
+
+  const fromDoc = (doc, profile) => readDoc(doc, profile).blocks;
 
   // ------------------------------------------------------------ styling
-  function paraStyleRequest(b, start, end) {
+  function paraStyleRequest(P, b, start, end) {
+    const spec = P.kinds[b.k] || {};
+    const body = isBody(b.k);
     const style = {
-      namedStyleType: NAMED[b.k],
+      namedStyleType: b.k === 'p' || b.k === 'brk' ? 'NORMAL_TEXT' : spec.named,
       alignment: ALIGN_TO_DOCS[b.align] || 'START',
-      lineSpacing: b.k === 'title' || b.k === 'subtitle' ? 100 : 200,
-      spaceAbove: PT(SPACE_ABOVE[b.k] || 0),
-      spaceBelow: PT(b.k === 'title' ? 24 : 0),
-      indentFirstLine: PT(isBody(b.k) && b.ind === 'normal' ? INDENT : 0),
-      indentStart: PT(isBody(b.k) && b.ind === 'poetry' ? INDENT : 0),
+      lineSpacing: spec.spacing || P.spacing,
+      spaceAbove: PT(b.k === 'brk' ? P.brkAbove : spec.above || 0),
+      spaceBelow: PT(spec.below || 0),
+      indentFirstLine: PT(body && b.ind === 'normal' ? P.indent : 0),
+      indentStart: PT((body || spec.indents) && b.ind === 'poetry' ? P.indent : 0),
       // a part or chapter starts its own page — except at the very top
-      pageBreakBefore: NEW_PAGE.has(b.k) && start > 1
+      pageBreakBefore: !!spec.page && start > 1
     };
     return {
       updateParagraphStyle: {
@@ -190,18 +237,19 @@
     };
   }
 
-  // the whole paragraph in the manuscript face, then its own marks on top
-  function textStyleRequests(b, start, len) {
+  // the whole paragraph in the profile's face, then its own marks on top
+  function textStyleRequests(P, b, start, len) {
     if (len <= 0) return [];
-    const heading = !isBody(b.k) && b.k !== 'brk';
+    const spec = (b.k !== 'p' && b.k !== 'brk' && P.kinds[b.k]) || {};
+    const base = spec.base || '';
     const out = [{
       updateTextStyle: {
         range: { startIndex: start, endIndex: start + len },
         textStyle: {
-          weightedFontFamily: { fontFamily: FONT, weight: 400 },
-          fontSize: PT(heading ? HEADING_SIZE[b.k] : 12),
-          bold: heading,
-          italic: false,
+          weightedFontFamily: { fontFamily: P.font, weight: 400 },
+          fontSize: PT(spec.size || P.size),
+          bold: base.includes('b'),
+          italic: base.includes('i'),
           underline: false,
           strikethrough: false,
           foregroundColor: { color: { rgbColor: { red: 0, green: 0, blue: 0 } } }
@@ -256,9 +304,10 @@
   // still the Doc's own. The Doc keeps an empty paragraph at its very end:
   // Google never lets the last newline go, and with nothing written in that
   // last paragraph, no edit ever has to.
-  function editRequests(doc, want) {
-    want = want.map(normalize);
-    const rd = readDoc(doc);
+  function editRequests(doc, want, profile = 'chapter') {
+    const P = prof(profile);
+    want = want.map((b) => normalize(b, profile));
+    const rd = readDoc(doc, profile);
     const requests = [];
     const lastPara = rd.paras[rd.paras.length - 1];
     if (!lastPara || lastPara.text !== '') {
@@ -274,7 +323,7 @@
       if (i1 - i0 === 1 && j1 - j0 === 1) {
         const o = owners[i0], ob = o.block, nb = want[j0];
         if (ob.k === nb.k && ob.align === nb.align && ob.ind === nb.ind && !o.text.includes('￼')) {
-          requests.push(...charEdit(o, ob, nb));
+          requests.push(...charEdit(P, o, ob, nb));
           continue;
         }
       }
@@ -287,8 +336,8 @@
         requests.push({ insertText: { location: { index: at }, text } });
         let pos = at;
         for (const b of blocks) {
-          requests.push(paraStyleRequest(b, pos, pos + b.text.length + 1));
-          requests.push(...textStyleRequests(b, pos, b.text.length));
+          requests.push(paraStyleRequest(P, b, pos, pos + b.text.length + 1));
+          requests.push(...textStyleRequests(P, b, pos, b.text.length));
           pos += b.text.length + 1;
         }
       }
@@ -296,7 +345,7 @@
     return requests;
   }
 
-  function charEdit(o, ob, nb) {
+  function charEdit(P, o, ob, nb) {
     const a = ob.text, b = nb.text;
     let pre = 0;
     while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
@@ -309,13 +358,13 @@
     const ins = b.slice(pre, b.length - suf);
     if (ins) out.push({ insertText: { location: { index: delFrom }, text: ins } });
     // the paragraph's styling, whole, so marks moved or changed come out right
-    out.push(...textStyleRequests(nb, o.start, b.length));
+    out.push(...textStyleRequests(P, nb, o.start, b.length));
     return out;
   }
 
   // A new, empty Doc ({body: one empty paragraph}) filled with `want`.
-  function fillRequests(want) {
-    return editRequests({ body: { content: [{ startIndex: 0, endIndex: 1, sectionBreak: {} }, { startIndex: 1, endIndex: 2, paragraph: { elements: [{ startIndex: 1, endIndex: 2, textRun: { content: '\n' } }] } }] } }, want);
+  function fillRequests(want, profile) {
+    return editRequests({ body: { content: [{ startIndex: 0, endIndex: 1, sectionBreak: {} }, { startIndex: 1, endIndex: 2, paragraph: { elements: [{ startIndex: 1, endIndex: 2, textRun: { content: '\n' } }] } }] } }, want, profile);
   }
 
   // ------------------------------------------------------------- to HTML
@@ -331,10 +380,10 @@
     for (const [s, e, f] of b.marks) for (let i = s; i < e; i++) per[i] = f;
     let html = '';
     for (let i = 0; i < b.text.length;) {
-      let j = i + 1;
-      while (j < b.text.length && per[j] === per[i] && b.text[j] !== '\u000b' && b.text[i] !== '\u000b') j++;
       if (b.text[i] === '\u000b') { html += '<br>'; i++; continue; }
-      let t = escHtml(b.text.slice(i, j).replace(/￼/g, ''));
+      let j = i + 1;
+      while (j < b.text.length && per[j] === per[i] && b.text[j] !== '\u000b') j++;
+      let t = escHtml(b.text.slice(i, j).split('￼').join(''));
       const f = per[i];
       if (f.includes('x')) t = '<s>' + t + '</s>';
       if (f.includes('u')) t = '<u>' + t + '</u>';
@@ -349,11 +398,11 @@
   }
 
   // a block's words, for showing a change to a person
-  const plain = (b) => String(b.text || '').split('\u000b').join(' / ').replace(/￼/g, '');
+  const plain = (b) => String(b.text || '').split('\u000b').join(' / ').split('￼').join('');
 
   const api = {
     normalize, blockKey, sameBlock, fromNeoPara, readDoc, fromDoc, diffBlocks,
-    editRequests, fillRequests, toNeoHtml, plain, BREAK_TEXT
+    editRequests, fillRequests, toNeoHtml, plain, BREAK_TEXT, PROFILES
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.NeoDriveBlocks = api;
