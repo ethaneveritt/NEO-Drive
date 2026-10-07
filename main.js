@@ -1226,12 +1226,15 @@ const CHAPTER_WORDS = new RegExp('^(' + [
   'глава', 'пролог', 'эпилог', 'часть',                            // ru
   'κεφάλαιο', 'κεφαλαιο', 'πρόλογος', 'προλογος',
   'επίλογος', 'επιλογος', 'μέρος', 'μερος',
-  'ραψωδία', 'ραψωδια'                                              // el
+  'ραψωδία', 'ραψωδια',                                             // el
+  // hu: the number comes first ("3. fejezet", "II. rész")
+  'prológus', 'prologus', 'epilógus', 'epilogus',
+  '(?:\\d{1,3}|[ivxlc]{1,7})\\.\\s*(?:fejezet|rész|resz)'
 ].join('|') + ')(?![\\p{L}\\d])', 'iu');
 
 // A manuscript's own Prologue / Epilogue headings give those chapters their role
-const PROLOGUE_WORDS = /^(prologue|prólogo|prologo|prolog|proloog)(?![\p{L}\d])/iu;
-const EPILOGUE_WORDS = /^(epilogue|épilogue|epílogo|epilogo|epilog|epiloog)(?![\p{L}\d])/iu;
+const PROLOGUE_WORDS = /^(prologue|prólogo|prologo|prolog|proloog|prológus|prologus)(?![\p{L}\d])/iu;
+const EPILOGUE_WORDS = /^(epilogue|épilogue|epílogo|epilogo|epilog|epiloog|epilógus|epilogus)(?![\p{L}\d])/iu;
 
 // A text file in whatever it was saved as: UTF-8 (with or without its
 // mark), UTF-16 (Notepad's "Unicode"), or, when it isn't valid UTF-8, the
@@ -1676,6 +1679,7 @@ const SPELL_LANGUAGES = {
   'pl': { label: 'Polski', pkg: 'dictionary-pl' },
   'pt-BR': { label: 'Português (Brasil)', pkg: 'dictionary-pt' },
   'ro': { label: 'Română', pkg: 'dictionary-ro' },
+  'hu': { label: 'Magyar', pkg: 'dictionary-hu' },
   'ru': { label: 'Русский', pkg: 'dictionary-ru' },
   'el': { label: 'Ελληνικά', pkg: 'dictionary-el' }
 };
@@ -2016,6 +2020,17 @@ function buildMenu() {
           visible: !scriptState.on, // a script is set in Courier Prime
           label: t('Body Font'),
           submenu: [
+            // A font the writer picked from their own computer is not in the list, and a radio
+            // group with nothing checked shows the first built-in as chosen. Show the font in use
+            // (#295).
+            ...(viewState.bodyFont && !bodyFonts.includes(viewState.bodyFont)
+              ? [{
+                  label: viewState.bodyFont,
+                  type: 'radio',
+                  checked: true,
+                  click: () => sendToWindow({ type: 'bodyFont', value: viewState.bodyFont })
+                }]
+              : []),
             ...bodyFonts.map((f) => ({
               label: f,
               type: 'radio',
