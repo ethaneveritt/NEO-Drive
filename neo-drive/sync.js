@@ -34,6 +34,12 @@ const FOLDER = 'application/vnd.google-apps.folder';
 const DOC = 'application/vnd.google-apps.document';
 const POLL_MS = 15000;      // how often to look for edits made in Docs, when nothing changed here
 const MAX_COMMENTS = 5;     // per sync, for edits undone in the Master Doc
+// bumped when the Master's look changes: an older Master is set again, whole
+const MASTER_STYLE = 3;
+// bumped when what a chapter Doc's paragraphs say about themselves changes:
+// what both sides agreed on is looked at afresh (nothing is lost: a Doc that
+// differs only in look is just set again)
+const CHAPTER_FORMAT = 3;
 const REMINDER = 'Reading copy — comments welcome. Edits made here are undone automatically.';
 
 const keysOf = (blocks) => blocks.map(B.blockKey);
@@ -93,6 +99,10 @@ class Sync {
     const { book } = model;
     const st = this.load(book.uuid);
     st.chapters = st.chapters || {};
+    if (st.chapterFormat !== CHAPTER_FORMAT) {
+      for (const c of Object.values(st.chapters)) { c.base = null; c.version = null; }
+      st.chapterFormat = CHAPTER_FORMAT;
+    }
     const out = { pulls: [], conflicts: [], masterEdits: [], created: 0, pushed: 0 };
     const t0 = this.now();
     const poll = model.force || !st.polledAt || t0 - st.polledAt >= POLL_MS;
@@ -233,7 +243,7 @@ class Sync {
 
     const body = (blocks) => {
       let i = 0;
-      while (i < blocks.length && blocks[i].k !== 'p' && blocks[i].k !== 'brk') i++;
+      while (i < blocks.length && B.isHeading(blocks[i])) i++;
       return blocks.slice(i); // the headings are NEO's, not the chapter's text
     };
     if (!base && sameBlocks(remote, want)) {
@@ -300,16 +310,16 @@ class Sync {
     const { book } = model;
     const want = [];
     const owner = []; // which chapter each block belongs to, for comments
-    const add = (b, name) => { want.push(B.normalize(b, 'master')); owner.push(name); };
+    const add = (b, name) => { want.push(B.normalize(b)); owner.push(name); };
     if (Array.isArray(model.master)) {
       for (const m of model.master) add(m.b, m.owner || '');
     } else {
       // (a model without the window's layout: title, then the chapters)
-      add({ k: 'title', text: book.title || 'Untitled' }, '');
-      if (book.subtitle) add({ k: 'subtitle', text: book.subtitle }, '');
-      if (book.author) add({ k: 'author', text: book.author }, '');
+      add(B.heading(book.title || 'Untitled'), '');
+      if (book.subtitle) add(B.heading(book.subtitle), '');
+      if (book.author) add({ k: 'p', text: book.author, align: 'center' }, '');
       for (const e of model.entries) {
-        for (const h of headsOf(e)) add(h, e.name);
+        headsOf(e).forEach((h, i) => add(i ? h : { ...h, pb: true }, e.name));
         for (const b of e.blocks) add(b, e.name);
       }
     }
@@ -329,7 +339,8 @@ class Sync {
         const f = await this.api.createFile({ name, mimeType: DOC, parents: [st.folderId], appProperties: { neoBook: book.uuid, neoRole: 'master' } });
         st.masterId = f.id;
         st.headerChecked = true;
-        await this.write(f.id, want, null, 'master');
+        st.masterStyle = MASTER_STYLE;
+        await this.write(f.id, want, null);
         await this.addReminder(st);
         st.masterBase = keysOf(want);
         st.masterOwner = owner;
@@ -346,13 +357,24 @@ class Sync {
     } else if (!st.noteDone && st.masterBase) {
       await this.addReminder(st); // a note that failed to post before
     }
+    if (st.masterStyle !== MASTER_STYLE) {
+      // a Master set in an older look: empty it, and set it again
+      await this.write(st.masterId, [], null);
+      await this.write(st.masterId, want, null);
+      st.masterStyle = MASTER_STYLE;
+      st.masterBase = keysOf(want);
+      st.masterOwner = owner;
+      st.masterVersion = (await this.api.getFile(st.masterId)).version;
+      out.pushed++;
+      return;
+    }
     const lv = listed.get(st.masterId);
     const localChanged = !st.masterBase || !sameKeys(want, st.masterBase);
     const remoteMaybe = !lv || lv.version !== st.masterVersion;
     if (!localChanged && !remoteMaybe) return;
 
     const doc = await this.api.getDoc(st.masterId);
-    const remote = B.fromDoc(doc, 'master');
+    const remote = B.fromDoc(doc);
     const undone = [];
     if (st.masterBase && !sameKeys(remote, st.masterBase)) {
       // someone typed in the reading copy: it is put back below, and a
@@ -368,7 +390,7 @@ class Sync {
       }
     }
     if (!sameKeys(remote, keysOf(want))) {
-      await this.write(st.masterId, want, doc, 'master');
+      await this.write(st.masterId, want, doc);
       out.pushed++;
     }
     // said only once the edit really was undone
@@ -440,20 +462,15 @@ function bookName(book, by = book.nameBy) {
 // a chapter's headings: as the window sent them (heads), or one plain heading
 function headsOf(e) {
   if (Array.isArray(e.heads)) return e.heads.map((h) => B.normalize(h));
-  return e.heading ? [B.normalize({ k: headingKind(e.kind), text: e.heading })] : [];
+  return e.heading ? [B.heading(e.heading)] : [];
 }
 
-function headingKind(kind) {
-  if (kind === 'part') return 'part';
-  if (['chapter', 'unnumbered', 'prologue', 'epilogue', 'interlude'].includes(kind)) return 'chapter';
-  return 'heading';
-}
 function sameKeys(blocks, keys) {
   return blocks.length === keys.length && blocks.every((b, i) => B.blockKey(b) === keys[i]);
 }
 function keyBlock(k) {
-  const [kk, text, marks, align, ind] = JSON.parse(k);
-  return { k: kk, text, marks, align, ind };
+  const [kk, text, marks, align, ind, pb, sa, sb, sz, ls] = JSON.parse(k);
+  return { k: kk, text, marks, align, ind, pb, sa, sb, sz, ls };
 }
 function clip(s) { return s.length > 400 ? s.slice(0, 400) + '…' : s; }
 

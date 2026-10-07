@@ -210,44 +210,38 @@
   }
 
   // The headings a chapter's Doc opens with, set the way Ethan's pages set
-  // them: "Chapter 2: Title" with the title in italic; "Prologue"; a part as
-  // "PART I:" over its title (the part's first line in NEO) in italic. The
-  // pages NEO's exports leave unheaded (copyright, dedication, epigraph)
-  // have none here either.
+  // them: a plain centered bold line, "Chapter 2: Title" with the title in
+  // italic; "Prologue"; a part as "PART I:" over its title (the part's first
+  // line in NEO) in italic. The pages NEO's exports leave unheaded
+  // (copyright, dedication, epigraph) have none here either.
   const partSkip = new Map(); // part chId -> NEO paragraphs used up by its heading
   function headsFor(chId, kind, html, blocks) {
     partSkip.delete(chId);
     if (chId === soloStory() || FRONT_PAGES.includes(kind)) return [];
-    const ital = (text, from) => (text.length > from ? [[from, text.length, 'i']] : []);
     if (kind === 'part') {
       const ps = parasFromHtml(html);
       const titled = !!(ps[0] && !ps[0].sceneBreak && !isAttribution(ps[0]) && blocks[0] && blocks[0].k === 'p');
       const label = chapterName(chId).toUpperCase();
-      if (!titled) return [{ k: 'part', text: label }];
+      if (!titled) return [DB.heading(label)];
       partSkip.set(chId, 1);
-      const title = blocks[0].text;
-      return [{ k: 'part', text: label + ':' }, { k: 'parttitle', text: title, marks: ital(title, 0) }];
+      return [DB.heading(label + ':'), DB.heading(blocks[0].text, 0)];
     }
-    if (kind === 'acknowledgments' || kind === 'about') return [{ k: 'heading', text: kindName(kind) }];
+    if (kind === 'acknowledgments' || kind === 'about') return [DB.heading(kindName(kind))];
     const title = ((book.chapterTitles || {})[chId] || '').trim();
     if (kind === 'unnumbered' || (title && library.exportCustomChapterTitles)) {
-      const text = title || chapterName(chId);
-      return [{ k: 'chapter', text, marks: title ? ital(text, 0) : [] }];
+      return [DB.heading(title || chapterName(chId), title ? 0 : undefined)];
     }
     const name = chapterName(chId);
-    if (!title) return [{ k: 'chapter', text: name }];
-    const text = `${name}: ${title}`;
-    return [{ k: 'chapter', text, marks: ital(text, name.length + 2) }];
+    if (!title) return [DB.heading(name)];
+    return [DB.heading(`${name}: ${title}`, name.length + 2)];
   }
 
   // The open book as the sync wants it: a Doc per chapter (with the part it
   // sits in), the parts (folders), and the Master Manuscript laid out the way
-  // NEO's own Word export lays a book out — title page, contents, a page per
-  // part, chapter headings in capitals.
+  // NEO's own Word export lays a book out (title page, contents, a page per
+  // part) in the chapters' own look.
   function bookModel() {
     if (!book.uuid) { book.uuid = crypto.randomUUID(); saveMeta(); }
-    const solo = soloStory();
-    const up = (s) => s.toLocaleUpperCase(writingLanguage());
     const entries = [];
     const parts = [];
     const toc = [];
@@ -262,37 +256,31 @@
       const all = blocksOf(html);
       const heads = headsFor(chId, kind, html, all);
       const blocks = all.slice(partSkip.get(chId) || 0);
+      const name = heads.length ? heads.map((h) => h.text).join(' ') : (chapterHeading(chId) || chapterName(chId));
       if (kind === 'part') {
         part = chId;
-        const label = chapterName(chId);
-        const title = partSkip.get(chId) ? all[0].text : '';
-        const name = title ? `${label}: ${title}` : label;
-        parts.push({ partId: chId, name });
-        toc.push(m({ k: 'tocpart', text: up(name) }, name));
-        body.push(m({ k: 'part', text: up(label) }, name));
-        if (title) body.push(m({ k: 'parttitle', text: title }, name));
-        for (const b of blocks) body.push(m(b, name));
-        // the part's own page has a Doc only when it holds more than its title
-        if (blocks.length) entries.push({ chId, kind, heads, name, blocks, part: chId });
+        // the folder and the contents line read "Part I: The Crossing"; the
+        // part's page in the Master, "PART I:" over its title
+        const partName = partSkip.get(chId) ? `${chapterName(chId)}: ${all[0].text}` : chapterName(chId);
+        parts.push({ partId: chId, name: partName });
+        toc.push(m({ k: 'p', text: partName, ind: 'flush', sa: 12 }, partName));
+        // the part's page: a little way down a new page
+        heads.forEach((h, i) => body.push(m(i ? h : { ...h, pb: true, sa: 72 }, partName)));
+        for (const b of blocks) body.push(m(b, partName));
+        if (blocks.length) entries.push({ chId, kind, heads, name: partName, blocks, part: chId });
         continue;
       }
-      const name = heads.length ? heads.map((h) => h.text).join(' ') : (chapterHeading(chId) || chapterName(chId));
       entries.push({ chId, kind, heads, name, blocks, part });
-      if (FRONT_PAGES.includes(kind)) {
-        for (const b of blocks) body.push(m(b, name));
-        continue;
-      }
-      const heading = chId === solo ? '' : (kind === 'acknowledgments' || kind === 'about' ? kindName(kind) : chapterHeading(chId));
-      if (heading) {
-        toc.push(m({ k: 'toc', text: heading, ind: part ? 'poetry' : 'flush' }, name));
-        body.push(m({ k: kind === 'acknowledgments' || kind === 'about' ? 'heading' : 'chapter', text: up(heading) }, name));
-      }
+      if (heads.length && !FRONT_PAGES.includes(kind)) toc.push(m({ k: 'p', text: name, ind: part ? 'poetry' : 'flush' }, name));
+      // each chapter starts a new page
+      heads.forEach((h, i) => body.push(m(i ? h : { ...h, pb: true }, name)));
       for (const b of blocks) body.push(m(b, name));
     }
-    const master = [m({ k: 'title', text: book.title || t('Untitled') })];
-    if (book.subtitle) master.push(m({ k: 'subtitle', text: book.subtitle }));
-    if (book.author) master.push(m({ k: 'author', text: book.author }));
-    if (toc.length > 1) master.push(m({ k: 'heading', text: up(t('Contents')) }), ...toc);
+    // the title page, as NEO's export sets it: title, subtitle, author
+    const master = [m({ ...DB.heading(book.title || t('Untitled')), sz: 20, sa: 150, ls: 100 })];
+    if (book.subtitle) master.push(m({ k: 'p', text: book.subtitle, marks: [[0, book.subtitle.length, 'i']], align: 'center', sz: 14, ls: 100 }));
+    if (book.author) master.push(m({ k: 'p', text: book.author, align: 'center', sa: 40, ls: 100 }));
+    if (toc.length > 1) master.push(m({ ...DB.heading(t('Contents')), pb: true }), ...toc);
     master.push(...body);
     return {
       book: { uuid: book.uuid, title: book.title || '', subtitle: book.subtitle || '', author: book.author || '' },
@@ -305,7 +293,7 @@
     const bookId = book.id;
     if (lastBook !== bookId) { lastBook = bookId; lastSig = ''; }
     const model = bookModel();
-    const sig = JSON.stringify([model.book, model.parts, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)])]);
+    const sig = JSON.stringify([model.book, model.parts, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)]), model.master.length]);
     syncing = true;
     try {
       const r = await window.neo.neoDrive({ op: 'sync', model: { ...model, dirty: force || sig !== lastSig, force: !!force } });

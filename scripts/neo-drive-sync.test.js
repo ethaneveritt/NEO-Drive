@@ -43,8 +43,9 @@ test('first sync makes a folder, a Master Manuscript, a Chapters folder and a Do
   assert.strictEqual(t.master().name, 'The Lighthouse — Master Manuscript');
   assert.deepStrictEqual(t.master().parents, [folder.id]);
   const c1 = B.fromDoc(await t.g.getDoc(t.chapterDoc('c1').id));
-  assert.deepStrictEqual(c1.map((b) => b.k), ['chapter', 'p', 'brk', 'p']);
-  const m = B.fromDoc(await t.g.getDoc(t.master().id), 'master');
+  assert.deepStrictEqual(c1.map((b) => b.k), ['p', 'p', 'brk', 'p']);
+  assert.ok(B.isHeading(c1[0]) && !B.isHeading(c1[1]));
+  const m = B.fromDoc(await t.g.getDoc(t.master().id));
   assert.deepStrictEqual(m.map((b) => b.text), ['The Lighthouse', 'Book One', 'Ethan Everitt', 'Chapter 1 — Cold Front', 'It rained on the harbor.', '***', 'Mara counted coins.', 'Chapter 2 — The Keeper’s House', 'The house was cold.']);
   // the reading-copy note: a comment, not in the page
   assert.deepStrictEqual(Object.keys((await t.g.getDoc(t.master().id)).headers), []);
@@ -313,4 +314,22 @@ test('a Master from before (note in its page header) loses the header and gets t
   assert.strictEqual((await t.g.listComments(id)).length, 1);
   await t.sync();
   assert.strictEqual((await t.g.listComments(id)).length, 1);
+});
+
+test('a Master set in an older look is set again, whole', async () => {
+  const t = setup();
+  await t.sync();
+  const id = t.master().id;
+  const file = path.join(t.s.dir, 'books', 'book-uuid-1.json');
+  const st = JSON.parse(fs.readFileSync(file, 'utf8'));
+  st.masterStyle = 1;
+  fs.writeFileSync(file, JSON.stringify(st));
+  // an old-look paragraph: Georgia
+  const d = t.g.docs.get(id);
+  d.chars.forEach((c) => { c.ts.weightedFontFamily = { fontFamily: 'Georgia' }; });
+  await t.sync();
+  assert.ok(t.g.docs.get(id).chars.filter((c) => c.c !== '\n').every((c) => c.ts.weightedFontFamily.fontFamily === 'Times New Roman'));
+  const w = t.g.calls.write;
+  await t.sync();
+  assert.strictEqual(t.g.calls.write, w, 'only once');
 });
