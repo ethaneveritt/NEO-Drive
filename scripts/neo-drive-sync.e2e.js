@@ -77,7 +77,23 @@ test('first sync: a folder, a Master Manuscript and a Doc per chapter', async ()
   for (const id of await chIds()) assert.ok(await docFor(id), 'Doc for ' + id);
   const [c1] = await chIds();
   const text = await fake({ do: 'text', id: (await docFor(c1)).id });
-  assert.match(text, /^Chapter 1 — Cold Front\nIt rained on the harbor\.\n\*\*\*\nMara counted coins\.\n/);
+  assert.match(text, /^Chapter 1: Cold Front\nIt rained on the harbor\.\n\*\*\*\nMara counted coins\.\n/);
+});
+
+test('the Doc is set like the manuscript: TNR 12, double-spaced, bold heading, italic title', async () => {
+  const [c1] = await chIds();
+  const doc = await fake({ do: 'doc', id: (await docFor(c1)).id });
+  const paras = doc.body.content.filter((e) => e.paragraph);
+  const [head, body, brk] = paras;
+  const runs = head.paragraph.elements.filter((e) => e.textRun.content !== '\n').map((e) => [e.textRun.content.replace(/\n$/, ''), !!e.textRun.textStyle.bold, !!e.textRun.textStyle.italic, e.textRun.textStyle.fontSize.magnitude]);
+  assert.deepEqual(runs, [['Chapter 1: ', true, false, 12], ['Cold Front', true, true, 12]]);
+  assert.equal(head.paragraph.paragraphStyle.alignment, 'CENTER');
+  assert.equal(head.paragraph.paragraphStyle.pageBreakBefore, false);
+  const ps = body.paragraph.paragraphStyle;
+  assert.deepEqual([ps.lineSpacing, ps.indentFirstLine.magnitude, ps.alignment], [200, 36, 'START']);
+  const ts = body.paragraph.elements[0].textRun.textStyle;
+  assert.deepEqual([ts.weightedFontFamily.fontFamily, ts.fontSize.magnitude, ts.bold], ['Times New Roman', 12, false]);
+  assert.equal(brk.paragraph.elements.map((x) => x.textRun.content).join(''), '***\n');
 });
 
 test('typing in NEO reaches the chapter Doc and the Master', async () => {
@@ -170,6 +186,36 @@ test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () =>
   const deleted = all.find((f) => f.name === 'Deleted chapters');
   assert.ok(deleted);
   assert.deepEqual(all.find((f) => f.id === doc.id).parents, [deleted.id]);
+});
+
+test('a part gets its own page: "PART I:" over its title in italic', async () => {
+  const order = await chIds();
+  await js(`(async () => {
+    const id = 'ch-part-test';
+    book.chapterOrder.unshift(id);
+    book.chapterKinds = book.chapterKinds || {}; book.chapterKinds[id] = 'part';
+    chapterHTML[id] = '<p>The Crossing</p>';
+    await persistChapter(id, chapterHTML[id]);
+    await saveMeta();
+    renderChapters();
+  })()`);
+  await tick(400);
+  await sync();
+  const doc = await fake({ do: 'doc', id: (await docFor('ch-part-test')).id });
+  const [part, title] = doc.body.content.filter((e) => e.paragraph);
+  assert.equal(part.paragraph.elements.map((x) => x.textRun.content).join(''), 'PART I:\n');
+  assert.equal(part.paragraph.elements[0].textRun.textStyle.fontSize.magnitude, 18);
+  assert.equal(title.paragraph.elements[0].textRun.content.trim(), 'The Crossing');
+  assert.equal(title.paragraph.elements[0].textRun.textStyle.italic, true);
+  // in the Master, the part and each chapter start a new page
+  const m = await fake({ do: 'doc', id: (await master()).id });
+  const breaks = m.body.content.filter((e) => e.paragraph && e.paragraph.paragraphStyle.pageBreakBefore).map((e) => e.paragraph.elements.map((x) => x.textRun.content).join('').trim());
+  assert.ok(breaks.includes('PART I:') && breaks.some((b) => /^Chapter 1: Cold Front/.test(b)), breaks.join(' | '));
+  assert.ok(breaks.indexOf('PART I:') < breaks.findIndex((b) => /^Chapter 1/.test(b)));
+  // and the part's title line in NEO is untouched by the round trip
+  await sync();
+  assert.match(diskText('ch-part-test'), /The Crossing/);
+  void order;
 });
 
 async function main() {

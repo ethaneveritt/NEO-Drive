@@ -168,6 +168,7 @@ async function handle(_e, msg) {
 async function fakeOp(g, msg) {
   if (msg.do === 'files') return [...g.files.values()];
   if (msg.do === 'text') return g.docText(msg.id);
+  if (msg.do === 'doc') return g.getDoc(msg.id);
   if (msg.do === 'type') { await g.typeInDoc(msg.id, g.findText(msg.id, msg.before), msg.text); return true; }
   if (msg.do === 'comments') return g.listComments(msg.id);
   return null;

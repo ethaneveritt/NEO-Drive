@@ -97,7 +97,7 @@ class Sync {
     for (const f of await this.api.listFiles(`'${esc(st.folderId)}' in parents and trashed = false`)) listed.set(f.id, f);
     st.polledAt = t0;
 
-    const docWant = (e) => (e.heading ? [B.normalize({ k: headingKind(e.kind), text: e.heading })] : []).concat(e.blocks.map(B.normalize));
+    const docWant = (e) => headsOf(e).concat(e.blocks.map(B.normalize));
 
     // ---- chapters
     for (let n = 0; n < model.entries.length; n++) {
@@ -182,7 +182,11 @@ class Sync {
     const remoteChanged = !base || !sameKeys(remote, base);
     if (base && !remoteChanged && !localChanged) { c.version = lv ? lv.version : c.version; return; }
 
-    const body = (blocks) => (blocks[0] && blocks[0].k !== 'p' && blocks[0].k !== 'brk' ? blocks.slice(1) : blocks);
+    const body = (blocks) => {
+      let i = 0;
+      while (i < blocks.length && blocks[i].k !== 'p' && blocks[i].k !== 'brk') i++;
+      return blocks.slice(i); // the headings are NEO's, not the chapter's text
+    };
     if (!base && sameBlocks(remote, want)) {
       c.base = keysOf(want);
     } else if (remoteChanged && !localChanged) {
@@ -238,7 +242,7 @@ class Sync {
     if (book.subtitle) add({ k: 'subtitle', text: book.subtitle }, '');
     if (book.author) add({ k: 'p', text: 'by ' + book.author, align: 'center' }, '');
     for (const e of model.entries) {
-      if (e.heading) add({ k: headingKind(e.kind), text: e.heading }, e.name);
+      for (const h of headsOf(e)) add(h, e.name);
       for (const b of e.blocks) add(b, e.name);
     }
     const name = `${bookName(book)} — Master Manuscript`;
@@ -353,6 +357,12 @@ function bookName(book, by = book.nameBy) {
   if (by === 'subtitle') return sub;
   if (by === 'both') return `${title}: ${sub}`;
   return title;
+}
+
+// a chapter's headings: as the window sent them (heads), or one plain heading
+function headsOf(e) {
+  if (Array.isArray(e.heads)) return e.heads.map(B.normalize);
+  return e.heading ? [B.normalize({ k: headingKind(e.kind), text: e.heading })] : [];
 }
 
 function headingKind(kind) {

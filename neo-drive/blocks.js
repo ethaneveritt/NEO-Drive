@@ -25,10 +25,16 @@
   // the Docs paragraph style each kind is written with, and read back by
   const NAMED = {
     title: 'TITLE', subtitle: 'SUBTITLE', part: 'HEADING_1', chapter: 'HEADING_2', heading: 'HEADING_3',
-    p: 'NORMAL_TEXT', brk: 'NORMAL_TEXT'
+    parttitle: 'HEADING_4', p: 'NORMAL_TEXT', brk: 'NORMAL_TEXT'
   };
-  const KIND_OF_NAMED = { TITLE: 'title', SUBTITLE: 'subtitle', HEADING_1: 'part', HEADING_2: 'chapter', HEADING_3: 'heading' };
-  const HEADING_SIZE = { title: 20, subtitle: 14, part: 16, chapter: 14, heading: 12 };
+  const KIND_OF_NAMED = { TITLE: 'title', SUBTITLE: 'subtitle', HEADING_1: 'part', HEADING_2: 'chapter', HEADING_3: 'heading', HEADING_4: 'parttitle' };
+  // The manuscript's look (Ethan's pages): everything Times New Roman 12,
+  // double-spaced; a chapter heads its page in bold, "Chapter 2: Title" with
+  // the title in italic; a part has a page of its own, "PART I:" over its
+  // title in italic, larger, a little way down the page.
+  const HEADING_SIZE = { title: 20, subtitle: 14, part: 18, parttitle: 18, chapter: 12, heading: 12 };
+  const SPACE_ABOVE = { part: 72 };
+  const NEW_PAGE = new Set(['part', 'chapter', 'heading']); // start a page (in the Master)
   const ALIGN_TO_DOCS = { left: 'START', center: 'CENTER', right: 'END', justify: 'JUSTIFIED' };
   const ALIGN_FROM_DOCS = { START: 'left', CENTER: 'center', END: 'right', JUSTIFIED: 'justify' };
   const FLAG_FIELDS = { b: 'bold', i: 'italic', u: 'underline', x: 'strikethrough' };
@@ -48,7 +54,9 @@
       return out;
     }
     if (k !== 'p') {
+      // headings are bold through and through; what's left to say is italic
       out.align = 'center';
+      out.marks = normMarks((b.marks || []).map(([s0, e0, f]) => [s0, e0, String(f || '').replace(/b/g, '')]), out.text.length);
       return out;
     }
     out.align = ALIGN_TO_DOCS[b.align] ? b.align : 'left';
@@ -165,17 +173,19 @@
     const style = {
       namedStyleType: NAMED[b.k],
       alignment: ALIGN_TO_DOCS[b.align] || 'START',
-      lineSpacing: isBody(b.k) || b.k === 'brk' ? 200 : 100,
-      spaceAbove: PT(b.k === 'part' || b.k === 'chapter' ? 24 : 0),
-      spaceBelow: PT(b.k === 'part' || b.k === 'chapter' || b.k === 'title' ? 24 : 0),
+      lineSpacing: b.k === 'title' || b.k === 'subtitle' ? 100 : 200,
+      spaceAbove: PT(SPACE_ABOVE[b.k] || 0),
+      spaceBelow: PT(b.k === 'title' ? 24 : 0),
       indentFirstLine: PT(isBody(b.k) && b.ind === 'normal' ? INDENT : 0),
-      indentStart: PT(isBody(b.k) && b.ind === 'poetry' ? INDENT : 0)
+      indentStart: PT(isBody(b.k) && b.ind === 'poetry' ? INDENT : 0),
+      // a part or chapter starts its own page — except at the very top
+      pageBreakBefore: NEW_PAGE.has(b.k) && start > 1
     };
     return {
       updateParagraphStyle: {
         range: { startIndex: start, endIndex: end },
         paragraphStyle: style,
-        fields: 'namedStyleType,alignment,lineSpacing,spaceAbove,spaceBelow,indentFirstLine,indentStart'
+        fields: 'namedStyleType,alignment,lineSpacing,spaceAbove,spaceBelow,indentFirstLine,indentStart,pageBreakBefore'
       }
     };
   }
