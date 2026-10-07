@@ -8,7 +8,7 @@ Ethan Everitt's personal build of [NEO](https://github.com/hughhowey/neo), Hugh 
 - **Right-click → Fix Apostrophes in This Chapter.** Turns every apostrophe and single quote the right way (’em, ’90s, don’t, ‘quoted’), lists the judgment calls so you can check them, and undoes in one step.
 - **Updates come from this repo**, not Hugh's, so an update never replaces this build with plain NEO.
 - **Google Drive sync**: a folder per book, a Master Manuscript Doc (a reading copy: edits there are undone and noted in a comment), a Doc per chapter, edits made in chapter Docs coming back into NEO, version N / version G when both sides changed, deleted chapters kept in a "Deleted chapters" folder. User-facing description: [.github/README.md](.github/README.md).
-- Coming: comments from the Docs shown in NEO.
+- **Google Docs comments in NEO's Notes & Comments pane**, with Go to and Resolve (resolves in Docs).
 
 ## How it stays current
 

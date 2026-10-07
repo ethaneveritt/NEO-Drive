@@ -276,6 +276,11 @@ class Google {
     } while (pageToken);
     return out;
   }
+  // Resolving a comment is a reply that says so (Drive's own way)
+  resolveComment(fileId, commentId) {
+    return this.request('POST', `${DRIVE}/files/${encodeURIComponent(fileId)}/comments/${encodeURIComponent(commentId)}/replies?fields=id`,
+      { action: 'resolve', content: 'Resolved in NEO.' });
+  }
   // Docs (indices as Google counts them with suggestions in place)
   getDoc(id) { return this.request('GET', `${DOCS}/${encodeURIComponent(id)}?suggestionsViewMode=SUGGESTIONS_INLINE`); }
   // requiredRevisionId: Google refuses the edit if the Doc changed since it

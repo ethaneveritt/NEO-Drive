@@ -180,6 +180,29 @@ test('Name Book Folders By → Title: Subtitle renames the folder', async () => 
   assert.equal((await master()).name, 'The Lighthouse: Book One');
 });
 
+test('Google Docs comments show in the Notes & Comments pane; Go to finds the passage; Resolve resolves it', async () => {
+  const [c1] = await chIds();
+  const doc = await docFor(c1);
+  await fake({ do: 'readerComment', id: doc.id, comment: { content: 'Love this line.', quote: 'rained on the harbor', author: 'Faye', replies: [{ content: 'Same!', author: 'Sam' }] } });
+  await sync();
+  await js(`document.getElementById('side-pane').classList.add('open')`);
+  await tick(300);
+  const card = () => js(`(() => { const c = document.querySelector('.nd-gc'); return c ? c.textContent.replace(/\\s+/g, ' ').trim() : ''; })()`);
+  assert.match(await card(), /Love this line\./);
+  assert.match(await card(), /Faye/);
+  assert.match(await card(), /Same!/);
+  if (process.env.SHOT) fs.writeFileSync(process.env.SHOT, (await wc.capturePage()).toPNG());
+  await js(`document.querySelector('.nd-gc .s-go').click()`);
+  await tick(300);
+  assert.equal(await js('getSelection().toString()'), 'rained on the harbor');
+  await js(`document.querySelector('.nd-gc .s-done').click()`);
+  await tick(500);
+  assert.equal(await card(), '');
+  const all = await fake({ do: 'comments', id: doc.id });
+  assert.equal(all.find((c) => c.content === 'Love this line.').resolved, true);
+  await js(`document.getElementById('side-pane').classList.remove('open')`);
+});
+
 test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () => {
   const order = await chIds();
   const last = order[order.length - 1];
