@@ -8,7 +8,7 @@ Ethan Everitt's personal build of [NEO](https://github.com/hughhowey/neo), Hugh 
 - **Right-click → Fix Apostrophes in This Chapter.** Turns every apostrophe and single quote the right way (’em, ’90s, don’t, ‘quoted’), lists the judgment calls so you can check them, and undoes in one step.
 - **Updates come from this repo**, not Hugh's, so an update never replaces this build with plain NEO.
 - **Google Drive sync**: a folder per book, a Master Manuscript Doc (a reading copy: edits there are undone and noted in a comment), a Doc per chapter, edits made in chapter Docs coming back into NEO, version N / version G when both sides changed, deleted chapters kept in a "Deleted chapters" folder. User-facing description: [.github/README.md](.github/README.md).
-- **Comments, Chapter Notes, Notepad** beside the page (top-right switches, one open at a time): Google Docs comments in the margin by their highlighted passage, with Resolve / Edit / Add Comment; a note per chapter; the book's Notes page. The Notes tab gets the same three as its heading. Notepad and Chapter Notes sync both ways with a Notes folder in Drive (Darlings is a copy).
+- **Comments, Chapter Notes, Notepad** in a dock on the right edge (one open at a time; tucks away to an arrow; the page shifts and narrows to make room). It replaces NEO's Notes & Comments pane on the manuscript — hidden by CSS and by wrapping `focusSticky` / `renderStickies` from `panels.js`, not deleted from `app.js`, so Hugh's updates still merge; the Outline keeps the pane for its loose cards. Placeholders (Ctrl+Shift+X) show as comment cards, their flags only while Comments is open. Google Docs comments in the margin by their highlighted passage, with Resolve / Edit / Add Comment; a note per chapter; the book's Notes page. The Notes tab gets the same three as its heading. Notepad and Chapter Notes sync both ways with a Notes folder in Drive (Darlings is a copy).
 
 ## How it stays current
 
@@ -28,7 +28,7 @@ To keep merges with Hugh's code painless, nearly everything lives in its own fil
 |---|---|
 | `neo-drive/main.js` | Main-process additions: right-click menu items, release location |
 | `neo-drive/renderer.js` | Window-side additions: formatting, Fix Apostrophes and its report, the sync tick |
-| `neo-drive/panels.js` | The switches at the top right, margin comments (CSS Highlight API, cards level with their passages), Chapter Notes (`neo-drive-chapter-notes.json` beside the book), the Notepad (NEO's `notes` page), and the Notes tab's heading |
+| `neo-drive/panels.js` | The dock at the right edge, NEO's placeholders as comment cards, margin comments (CSS Highlight API, cards level with their passages), Chapter Notes (`neo-drive-chapter-notes.json` beside the book), the Notepad (NEO's `notes` page), and the Notes tab's heading |
 | `neo-drive/apostrophes.js` | The apostrophe rules (pure functions) |
 | `scripts/neo-drive-*.test.js` | Unit tests (`node --test scripts/neo-drive-*.test.js`) |
 | `scripts/neo-drive.e2e.js` | End-to-end tests on a throwaway library (`npx electron scripts/neo-drive.e2e.js`) |

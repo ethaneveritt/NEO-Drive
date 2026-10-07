@@ -1,12 +1,21 @@
 // NEO-Drive: the room to the right of the page.
 //
-// Three quiet words at the top right of the manuscript (Comments, Chapter
-// Notes, Notepad) open one thing at a time in the empty space beside the
-// page; clicking the open one puts it away.
+// A small bar sticks out from the window's right edge: Comments, Chapter
+// Notes, Notepad, and an arrow that tucks it away (only the arrow stays).
+// Clicking one opens it as a pane down the right side, one at a time; the
+// page moves over (and narrows, in a small window) to make room. Clicking
+// the open one closes the pane again.
 //
-//   Comments       Google Docs comments in the margin, beside the passage
-//                  they're on (highlighted). Resolve; Edit on your own.
-//                  Select words, right-click → Add Comment… to make one.
+// This takes the place of NEO's own Notes & Comments pane on the manuscript
+// (hidden by CSS here, not removed from NEO's code: the Outline still uses
+// that pane for its loose cards). NEO's placeholders (Ctrl+Shift+X) become
+// a kind of comment: the flag shows in the page only while Comments is open,
+// and its note is a card beside it.
+//
+//   Comments       Google Docs comments beside the passage they're on
+//                  (highlighted), and placeholders beside their flags.
+//                  Resolve; Edit on your own. Select words, right-click →
+//                  Add Comment… to make one.
 //   Chapter Notes  a note per chapter, following the chapter you're in
 //   Notepad        the book's Notes page
 //
@@ -40,17 +49,45 @@
   // ------------------------------------------------------------- the look
   const st = document.createElement('style');
   st.textContent = `
-    #nd-toggles { position: fixed; top: 34px; right: 22px; z-index: 75; display: flex; gap: 16px;
-      font-size: 12px; letter-spacing: .5px; -webkit-app-region: no-drag; zoom: var(--ui-zoom, 1); }
-    #nd-toggles button { background: none; border: none; color: var(--muted); opacity: .45; padding: 2px 0;
-      transition: opacity .15s ease, color .15s ease; }
-    #nd-toggles button:hover { opacity: 1; }
-    #nd-toggles button.on { opacity: 1; color: var(--accent); }
-    #nd-toggles .n { font-size: 10px; margin-left: 4px; opacity: .8; }
+    :root { --nd-dock-w: clamp(220px, 25vw, 340px); --nd-pw: calc((var(--page-w) + var(--page-gutter)) * var(--page-zoom, 1)); }
+    /* NEO's Notes & Comments pane gives way to the dock, except on the Outline (its loose cards) */
+    #editor-view:not(.outline-tab) #side-pane, #editor-view:not(.outline-tab) #side-hotzone { display: none !important; }
+    #editor-view.side-pinned:not(.outline-tab) #paper-scroll { left: 50%; }
+    #editor-view.side-pinned.nav-pinned:not(.outline-tab) #paper-scroll { left: calc(50% + 124px * var(--ui-zoom, 1)); }
+    /* the open dock: the page moves left as far as it must, and narrows when the window is small */
+    #editor-view.nd-docked:not(.outline-tab) #paper-scroll {
+      width: min(var(--nd-pw), calc(100vw - var(--nd-dock-w) - 16px));
+      left: min(50vw, calc(100vw - var(--nd-dock-w) - min(var(--nd-pw), calc(100vw - var(--nd-dock-w) - 16px)) / 2 - 8px)); }
+    #editor-view.nd-docked.nav-pinned:not(.outline-tab) #paper-scroll {
+      width: min(var(--nd-pw), calc(100vw - 248px * var(--ui-zoom, 1) - var(--nd-dock-w) - 16px));
+      left: calc(248px * var(--ui-zoom, 1) + (100vw - 248px * var(--ui-zoom, 1) - var(--nd-dock-w)) / 2); }
+    /* placeholders show only while Comments is open */
+    body:not(.nd-flags) #chapters .ph-mark { display: none; }
 
-    #nd-panel { position: fixed; top: 64px; bottom: 60px; z-index: 65; display: flex; flex-direction: column;
-      background: var(--pane); border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 8px;
-      padding: 14px 16px; }
+    #nd-dock { position: fixed; right: 0; top: 30px; z-index: 66; -webkit-app-region: no-drag; font-size: 12px; }
+    #nd-dock .nd-bar { display: flex; align-items: center; gap: 2px; background: var(--pane);
+      border: 1px solid color-mix(in srgb, var(--muted) 22%, transparent); border-right: none; border-radius: 8px 0 0 8px;
+      padding: 3px 8px 3px 2px; box-shadow: -6px 0 18px rgba(0,0,0,.18); }
+    #nd-dock .nd-bar button { background: none; border: none; color: var(--muted); padding: 5px 7px; border-radius: 5px; white-space: nowrap;
+      transition: color .15s ease, background .15s ease; }
+    #nd-dock .nd-bar button:hover { color: var(--accent); }
+    #nd-dock .nd-bar button.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+    #nd-dock .nd-bar .nd-arrow, #nd-dock .nd-tab { font-size: 15px; line-height: 1; padding: 5px 6px; }
+    #nd-dock .n { font-size: 10px; margin-left: 4px; opacity: .8; }
+    #nd-dock .nd-tab { display: none; background: var(--pane); color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 22%, transparent);
+      border-right: none; border-radius: 8px 0 0 8px; padding: 10px 5px; box-shadow: -6px 0 18px rgba(0,0,0,.18); }
+    #nd-dock .nd-tab:hover { color: var(--accent); }
+    #nd-dock.tucked .nd-bar { display: none; }
+    #nd-dock.tucked .nd-tab { display: block; }
+    #nd-dock .nd-body { display: none; }
+    /* open: a pane the height of the window, shaded in from its edge */
+    #nd-dock.open { top: 0; bottom: calc(40px * var(--ui-zoom, 1)); width: var(--nd-dock-w); display: flex; flex-direction: column;
+      background: linear-gradient(to right, color-mix(in srgb, var(--pane) 55%, transparent), var(--pane) 22px);
+      border-left: 1px solid color-mix(in srgb, var(--muted) 18%, transparent); padding-top: 32px; }
+    #nd-dock.open .nd-bar { border: none; border-radius: 0; box-shadow: none; background: none; padding: 0 8px 8px 6px; flex-wrap: wrap; }
+    #nd-dock.open .nd-body { display: block; position: relative; flex: 1; min-height: 0; }
+
+    #nd-panel { position: absolute; inset: 4px 14px 14px 14px; display: flex; flex-direction: column; }
     #nd-panel .nd-p-head { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 10px; }
     #nd-panel .nd-p-head b { display: block; font-size: 13px; letter-spacing: 0; text-transform: none; font-weight: 600;
       color: inherit; margin-top: 3px; font-family: var(--body-font); }
@@ -60,8 +97,10 @@
     #nd-panel textarea::placeholder { color: var(--muted); opacity: .6; font-style: italic; }
     #nd-panel .nd-pad:empty::before { content: attr(data-ph); color: var(--muted); opacity: .6; font-style: italic; }
 
-    #nd-margin { position: fixed; top: 0; bottom: 40px; z-index: 65; overflow: hidden; pointer-events: none; }
-    .nd-card { position: absolute; left: 0; right: 0; pointer-events: auto; background: var(--pane);
+    #nd-margin { position: absolute; inset: 0 12px 0 12px; overflow: hidden; pointer-events: none; }
+    .nd-card.nd-flag { border-left-color: var(--red); }
+    .nd-card.nd-flag.active { border-left-color: var(--red); }
+    .nd-card { position: absolute; left: 0; right: 0; pointer-events: auto; background: var(--bg);
       border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-left: 3px solid #e2b93b;
       border-radius: 6px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; cursor: default;
       transition: top .12s ease, box-shadow .12s ease; }
@@ -101,22 +140,27 @@
   document.head.appendChild(st);
 
   // ----------------------------------------------------------- the pieces
-  const toggles = document.createElement('div');
-  toggles.id = 'nd-toggles';
-  toggles.hidden = true;
-  toggles.innerHTML = `<button data-m="comments">${t('Comments')}<span class="n"></span></button><button data-m="chapter">${t('Chapter Notes')}</button><button data-m="notepad">${t('Notepad')}</button>`;
-  toggles.addEventListener('mousedown', (e) => e.preventDefault()); // the caret stays in the page
+  const dock = document.createElement('div');
+  dock.id = 'nd-dock';
+  dock.hidden = true;
+  dock.innerHTML = `<button class="nd-tab" title="${esc(t('Comments, Chapter Notes, Notepad'))}">‹</button>
+    <div class="nd-bar"><button class="nd-arrow" title="${esc(t('Tuck away'))}">›</button><button data-m="comments">${t('Comments')}<span class="n"></span></button><button data-m="chapter">${t('Chapter Notes')}</button><button data-m="notepad">${t('Notepad')}</button></div>
+    <div class="nd-body"><div id="nd-panel" hidden></div><div id="nd-margin" hidden></div></div>`;
+  const toggles = dock.querySelector('.nd-bar');
+  const panel = dock.querySelector('#nd-panel');
+  const margin = dock.querySelector('#nd-margin');
+  let tucked = false;
+  try { const kept = JSON.parse(localStorage.getItem('nd-dock') || '{}'); tucked = !!kept.tucked; mode = kept.mode || ''; } catch { /* first time */ }
+  const keep = () => { try { localStorage.setItem('nd-dock', JSON.stringify({ tucked, mode })); } catch { /* not kept */ } };
+  dock.addEventListener('mousedown', (e) => { if (e.target.closest('button')) e.preventDefault(); }); // the caret stays in the page
   toggles.addEventListener('click', (e) => {
     const b = e.target.closest('button');
-    if (b) setMode(mode === b.dataset.m ? '' : b.dataset.m);
+    if (!b) return;
+    if (b.classList.contains('nd-arrow')) { tucked = true; setMode(''); return; }
+    setMode(mode === b.dataset.m ? '' : b.dataset.m);
   });
-  const panel = document.createElement('div');
-  panel.id = 'nd-panel';
-  panel.hidden = true;
-  const margin = document.createElement('div');
-  margin.id = 'nd-margin';
-  margin.hidden = true;
-  document.body.append(toggles, panel, margin);
+  dock.querySelector('.nd-tab').addEventListener('click', () => { tucked = false; setMode(''); });
+  document.body.append(dock);
 
   const onManuscript = () => !!(book && currentTab === 'manuscript' && !$('#editor-view').hidden && !$('#paper').hidden);
 
@@ -125,40 +169,29 @@
     if (mode === 'notepad') savePad();
     if (m !== 'comments') { draft = null; editing = ''; }
     mode = m;
-    toggles.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.m === mode));
+    if (m) tucked = false;
+    keep();
+    toggles.querySelectorAll('button').forEach((b) => b.classList.toggle('on', !!mode && b.dataset.m === mode));
     drawPanel();
     refreshComments();
   }
 
-  // The space beside the page: from the page's right edge to the window's.
-  // A window too narrow for it gets a column over the page's right side.
-  function room(want) {
-    const page = $('#paper').getBoundingClientRect();
-    const left = page.right + 24;
-    const avail = window.innerWidth - left - 18;
-    if (avail >= 200) return { left, width: Math.min(avail, want) };
-    const width = Math.min(want, window.innerWidth - 40);
-    return { left: window.innerWidth - width - 18, width };
-  }
   let lastRoom = '';
   function placeAll() {
-    const show = onManuscript();
-    toggles.hidden = !show || !window.NeoDrive;
+    const show = onManuscript() && !!window.NeoDrive;
+    dock.hidden = !show;
+    dock.classList.toggle('tucked', tucked && !mode);
+    dock.classList.toggle('open', !!mode);
+    $('#editor-view').classList.toggle('nd-docked', show && !!mode);
     panel.hidden = !show || (mode !== 'chapter' && mode !== 'notepad');
     margin.hidden = !show || mode !== 'comments';
-    if (!panel.hidden) {
-      const r = room(380);
-      panel.style.left = r.left + 'px';
-      panel.style.width = r.width + 'px';
-    }
+    document.body.classList.toggle('nd-flags', !margin.hidden);
     if (!margin.hidden) {
-      const r = room(300);
-      const key = r.left + ',' + r.width;
-      margin.style.left = r.left + 'px';
-      margin.style.width = r.width + 'px';
+      const r = margin.getBoundingClientRect();
+      const key = Math.round(r.left) + ',' + Math.round(r.width) + ',' + Math.round($('#paper').getBoundingClientRect().width);
       if (key !== lastRoom) { lastRoom = key; layout(); }
     }
-    if (margin.hidden) CSS.highlights && (CSS.highlights.delete('nd-comment'), CSS.highlights.delete('nd-comment-active'));
+    if (margin.hidden && CSS.highlights) { CSS.highlights.delete('nd-comment'); CSS.highlights.delete('nd-comment-active'); }
   }
 
   // --------------------------------------------------------- Chapter Notes
@@ -172,7 +205,6 @@
     sent = null;
     comments = [];
     found = new Map();
-    toggles.querySelector('.n').textContent = '';
     seenIds = null;
     active = '';
     draft = null;
@@ -424,8 +456,55 @@
       ${(c.replies || []).map((r) => `<div class="nd-c-reply"><span class="nd-c-who">${esc(r.author)}</span> ${esc(r.content)}</div>`).join('')}
       <div class="nd-c-actions">${c.mine ? `<button class="edit">${t('Edit')}</button>` : ''}<button class="resolve">${t('Resolve')}</button></div>`;
   }
+  // NEO's placeholders (Ctrl+Shift+X): a flag in the page and a note,
+  // shown here as a kind of comment, kept by NEO as it always kept them
+  const flags = () => (Array.isArray(stickies) ? stickies : []).filter((x) => !x.resolved);
+  const flagMark = (sid) => document.querySelector(`#chapters .ph-mark[data-sid="${CSS.escape(sid)}"]`);
+  function count() {
+    const n = comments.length + flags().length;
+    toggles.querySelector('.n').textContent = n ? String(n) : '';
+  }
+  // where a card belongs on the page: its words, its flag, or its chapter
+  function anchorTop(id) {
+    if (id.startsWith('flag:')) {
+      const m = flagMark(id.slice(5));
+      if (m) { const r = m.getBoundingClientRect(); if (r.height) return r.top; }
+      const s = flags().find((x) => x.id === id.slice(5));
+      const a = fallbackAnchor({ chId: s && s.chapterId });
+      return a ? a.getBoundingClientRect().top : 0;
+    }
+    const c = comments.find((x) => x.id === id);
+    const f = c && found.get(c.id);
+    const y = f ? rectTop(f.range) : null;
+    if (y != null) return y;
+    const a = c && fallbackAnchor(c);
+    return a ? a.getBoundingClientRect().top : 0;
+  }
+  function flagCard(s) {
+    const el = document.createElement('div');
+    el.className = 'nd-card nd-flag' + ('flag:' + s.id === active ? ' active' : '');
+    el.dataset.id = 'flag:' + s.id;
+    el.innerHTML = `<div class="nd-c-who">⚑ ${t('Placeholder')}</div><textarea spellcheck="true" placeholder="${esc(t('What needs doing here?'))}"></textarea>
+      <div class="nd-c-actions"><button class="resolve">${t('Resolve')}</button></div>`;
+    const ta = el.querySelector('textarea');
+    ta.value = s.text || '';
+    ta.style.minHeight = '34px';
+    ta.addEventListener('input', () => { s.text = ta.value; scheduleStickiesSave(); });
+    ta.addEventListener('focus', () => { if (active !== el.dataset.id) activate(el.dataset.id); });
+    // Enter: back to the page, just past the flag (Shift+Enter: another line)
+    ta.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      e.preventDefault();
+      returnToMark(s.id);
+    });
+    el.addEventListener('mousedown', (e) => { if (!e.target.closest('button, textarea')) activate(el.dataset.id); });
+    el.querySelector('.resolve').onclick = () => { if (active === el.dataset.id) active = ''; resolveSticky(s.id); };
+    return el;
+  }
+
   function buildCards() {
     margin.innerHTML = '';
+    count();
     if (draft) {
       const el = document.createElement('div');
       el.className = 'nd-card active nd-draft';
@@ -453,6 +532,7 @@
       if (ed) ed.onclick = () => startEdit(c, el);
       margin.appendChild(el);
     }
+    for (const f of flags()) margin.appendChild(flagCard(f));
     paint();
     layout();
     const ta = margin.querySelector('.nd-draft textarea');
@@ -467,12 +547,7 @@
     const cards = [...margin.children].map((el) => {
       let y;
       if (el.classList.contains('nd-draft')) y = rectTop(draft && draft.range);
-      else {
-        const c = comments.find((x) => x.id === el.dataset.id);
-        const f = c && found.get(c.id);
-        y = f ? rectTop(f.range) : null;
-        if (y == null && c) { const a = fallbackAnchor(c); y = a ? a.getBoundingClientRect().top : 0; }
-      }
+      else y = anchorTop(el.dataset.id);
       return { el, y: (y == null ? 0 : y) - top0, h: el.offsetHeight };
     });
     cards.sort((a, b) => a.y - b.y);
@@ -504,7 +579,8 @@
     if (scroll) {
       const f = found.get(id);
       const c = comments.find((x) => x.id === id);
-      const el = f ? f.range.startContainer.parentElement : (c && fallbackAnchor(c));
+      const el = id.startsWith('flag:') ? (flagMark(id.slice(5)) || fallbackAnchor({ chId: (flags().find((x) => 'flag:' + x.id === id) || {}).chapterId }))
+        : f ? f.range.startContainer.parentElement : (c && fallbackAnchor(c));
       if (el) el.scrollIntoView({ block: 'center' });
     }
     layout();
@@ -531,26 +607,26 @@
 
   function setComments(list) {
     list = list || [];
-    if (editing || draft) { held = list; return; }
+    if (editing || draft || margin.contains(document.activeElement)) { held = list; return; }
     held = null;
     const key = (l) => JSON.stringify(l.map((c) => [c.id, c.content, c.quote, (c.replies || []).length]));
     const changed = key(list) !== key(comments);
     const fresh = seenIds ? list.filter((c) => !seenIds.has(c.id)) : [];
     seenIds = new Set([...(seenIds || []), ...list.map((c) => c.id)]);
     comments = list;
-    const n = toggles.querySelector('.n');
-    n.textContent = comments.length ? String(comments.length) : '';
+    count();
     if (fresh.length && mode !== 'comments') {
       const who = [...new Set(fresh.map((c) => c.author).filter(Boolean))].join(', ');
       toast(fresh.length === 1
-        ? t('A new comment from Google Docs{who} — Comments, top right', { who: who ? ' (' + who + ')' : '' })
-        : t('{n} new comments from Google Docs — Comments, top right', { n: fresh.length }), 7000);
+        ? t('A new comment from Google Docs{who} — Comments, at the right edge', { who: who ? ' (' + who + ')' : '' })
+        : t('{n} new comments from Google Docs — Comments, at the right edge', { n: fresh.length }), 7000);
     }
     if (changed) { refreshComments(); if (notesView === 'comments') drawNotesView(); }
   }
   function release() {
-    if (held && !editing && !draft) setComments(held);
+    if (held && !editing && !draft && !margin.contains(document.activeElement)) setComments(held);
   }
+  margin.addEventListener('focusout', () => setTimeout(release, 0));
 
   async function resolve(c, el) {
     el.style.opacity = '0.5';
@@ -558,7 +634,7 @@
     if (r && r.ok) {
       comments = comments.filter((x) => x.id !== c.id);
       if (held) held = held.filter((x) => x.id !== c.id);
-      toggles.querySelector('.n').textContent = comments.length ? String(comments.length) : '';
+      count();
       if (active === c.id) active = '';
       refreshComments();
       if (notesView === 'comments') drawNotesView();
@@ -644,7 +720,7 @@
       comments = [...comments.filter((c) => c.id !== r.comment.id), r.comment];
       if (seenIds) seenIds.add(r.comment.id);
       if (held) held = [...held.filter((c) => c.id !== r.comment.id), r.comment];
-      toggles.querySelector('.n').textContent = String(comments.length);
+      count();
       active = r.comment.id;
       release();
       refreshComments();
@@ -699,8 +775,8 @@
   function drawCommentList() {
     if (editing) return;
     notesBody.innerHTML = '';
-    if (!comments.length) {
-      notesBody.innerHTML = `<div class="nd-empty">${connected ? t('No open comments. Comments on the chapter Docs (and the Master Manuscript) show here and beside the page.') : t('Connect Google Drive (Google Drive menu) and comments from the book’s Google Docs show here and beside the page.')}</div>`;
+    if (!comments.length && !flags().length) {
+      notesBody.innerHTML = `<div class="nd-empty">${connected ? t('No open comments. Comments on the chapter Docs (and the Master Manuscript) show here and beside the page.') : t('Connect Google Drive (Google Drive menu) and comments from the book’s Google Docs show here and beside the page.')}<br><br>${esc(t('Ctrl+Shift+X while writing plants a placeholder: a flag and a note to come back to.'))}</div>`;
       return;
     }
     // in the book's order, a heading per chapter
@@ -713,12 +789,19 @@
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(c);
     }
+    for (const f of flags()) {
+      const m = flagMark(f.id);
+      const k = (m && m.closest('.chapter') && m.closest('.chapter').dataset.id) || f.chapterId || '';
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push({ flag: f });
+    }
     const keys = [...groups.keys()].sort((a, b) => (a ? order.indexOf(a) : 1e9) - (b ? order.indexOf(b) : 1e9));
     for (const k of keys) {
       const h = document.createElement('h3');
       h.textContent = k ? chapterTitle(k) : t('Master Manuscript');
       notesBody.appendChild(h);
       for (const c of groups.get(k)) {
+        if (c.flag) { notesBody.appendChild(flagItem(c.flag)); continue; }
         const el = document.createElement('div');
         el.className = 'nd-item';
         el.dataset.id = c.id;
@@ -737,6 +820,19 @@
         notesBody.appendChild(el);
       }
     }
+  }
+  function flagItem(f) {
+    const el = document.createElement('div');
+    el.className = 'nd-item';
+    el.style.borderLeftColor = 'var(--red)';
+    el.innerHTML = `<div class="nd-c-who">⚑ ${t('Placeholder')}</div><div class="nd-c-body"></div>
+      <div class="nd-c-actions"><button class="go">${t('Jump to placeholder')}</button><button class="resolve">${t('Resolve')}</button></div>`;
+    const body = el.querySelector('.nd-c-body');
+    body.textContent = f.text || t('What needs doing here?');
+    if (!f.text) body.style.opacity = '.5';
+    el.querySelector('.go').onclick = () => jumpTo('flag:' + f.id);
+    el.querySelector('.resolve').onclick = () => { resolveSticky(f.id); drawNotesView(); };
+    return el;
   }
   function drawChapterList() {
     notesBody.innerHTML = '';
@@ -759,6 +855,36 @@
     if (mode !== 'comments') setMode('comments');
     else refreshComments();
     requestAnimationFrame(() => activate(id, true));
+  }
+
+  // NEO's placeholders arrive here instead of its Notes & Comments pane:
+  // planting one (or clicking a flag) opens Comments at its note; whenever
+  // NEO redraws its list, the cards follow.
+  if (typeof window.focusSticky === 'function') {
+    window.focusSticky = function (sid) {
+      if (currentTab !== 'manuscript') switchTab('manuscript');
+      if (mode !== 'comments') setMode('comments');
+      else refreshComments();
+      activate('flag:' + sid);
+      const ta = margin.querySelector(`.nd-card[data-id="${CSS.escape('flag:' + sid)}"] textarea`);
+      if (ta) ta.focus({ preventScroll: true });
+    };
+  }
+  if (typeof window.renderStickies === 'function') {
+    const own = window.renderStickies;
+    window.renderStickies = function () {
+      own.apply(this, arguments);
+      try {
+        count();
+        if (mode === 'comments' && !margin.hidden) {
+          // a note being typed in keeps its card; the rest just move
+          const ids = [...margin.querySelectorAll('.nd-flag')].map((el) => el.dataset.id).join();
+          if (margin.contains(document.activeElement) && ids === flags().map((f) => 'flag:' + f.id).join()) layout();
+          else refreshComments();
+        }
+        if (currentTab === 'notes' && notesView === 'comments' && !notesBody.contains(document.activeElement)) drawNotesView();
+      } catch (err) { window.neo.logError('NEO-Drive placeholders: ' + err); }
+    };
   }
 
   // The Notes tab: the head above, Notepad open as NEO always opened it
@@ -885,6 +1011,7 @@
   let ticks = 0;
   setInterval(() => {
     ticks++;
+    if (book) count();
     if (book && forBook !== book.id) { loadNotes(); if (mode) setMode(mode); }
     if (!book && forBook) forBook = null;
     const shown = onManuscript();
