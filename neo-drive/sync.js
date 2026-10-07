@@ -332,7 +332,8 @@ class Sync {
     st.notesFolderId = await this.ensureSubfolder(st.notesFolderId, listed, [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'notes'), 'Notes', st.folderId, { neoBook: book.uuid, neoRole: 'notes' });
     st.notes = st.notes || {};
     const note = (text, extra = {}) => B.normalize({ k: 'p', text, ind: 'flush', ls: 115, ...extra });
-    const lines = (text) => String(text || '').split(/\n+/).map((x) => x.trim()).filter(Boolean).map((x) => note(x));
+    // each line a paragraph; blank lines kept (the gaps between notes)
+    const lines = (text) => trimGaps(String(text || '').split('\n').map((x) => x.trim())).map((x) => note(x));
 
     // Chapter Notes: every chapter's heading, so notes can be added under
     // any of them in Docs too
@@ -351,7 +352,7 @@ class Sync {
       darlingsWant.push(...lines(d.text));
     }
     const docs = [
-      { key: 'notepad', name: 'Notepad', want: (model.notes.notepad || []).map((b) => B.normalize({ ...b, ind: 'flush', ls: 115 })), twoWay: true },
+      { key: 'notepad', name: 'Notepad', want: trimGaps(model.notes.notepad || [], (b) => !b.text).map((b) => B.normalize({ ...b, ind: 'flush', ls: 115, sa: 0, sb: 0 })), twoWay: true },
       { key: 'chapternotes', name: 'Chapter Notes', want: chapterWant, twoWay: true },
       { key: 'darlings', name: 'Darlings', want: darlingsWant, twoWay: false }
     ];
@@ -365,7 +366,7 @@ class Sync {
         if (found) c = st.notes[d.key] = { docId: found.id, base: null, version: null };
         else {
           const f = await this.api.createFile({ name: d.name, mimeType: DOC, parents: [st.notesFolderId], appProperties: { neoBook: book.uuid, neoNote: d.key } });
-          await this.write(f.id, d.want);
+          await this.write(f.id, d.want, null, 'notes');
           st.notes[d.key] = { docId: f.id, base: keysOf(d.want), version: (await this.api.getFile(f.id)).version };
           out.created++;
           continue;
@@ -375,11 +376,11 @@ class Sync {
       const localChanged = !c.base || !sameKeys(d.want, c.base);
       if (!localChanged && lv && c.base && lv.version === c.version) continue;
       const doc = await this.api.getDoc(c.docId);
-      const remote = B.fromDoc(doc);
+      const remote = trimGaps(B.fromDoc(doc, { keepEmpty: true }), (b) => !b.text.trim());
       const remoteChanged = !c.base || !sameKeys(remote, c.base);
       if (!d.twoWay) {
         // a copy: whatever was typed there gives way to the book's own
-        if (!sameKeys(remote, keysOf(d.want))) { await this.write(c.docId, d.want, doc); out.pushed++; }
+        if (!sameKeys(remote, keysOf(d.want))) { await this.write(c.docId, d.want, doc, 'notes'); out.pushed++; }
         c.base = keysOf(d.want);
       } else if (!c.base && sameBlocks(remote, d.want)) {
         c.base = keysOf(d.want);
@@ -387,12 +388,12 @@ class Sync {
         out.notesPulls[d.key] = d.key === 'chapternotes' ? readChapterNotes(remote, labels) : remote;
         c.base = keysOf(remote);
       } else if (remoteChanged && localChanged) {
-        await this.write(c.docId, d.want, doc);
+        await this.write(c.docId, d.want, doc, 'notes');
         if (!sameBlocks(remote, d.want)) out.notesConflicts[d.key] = d.key === 'chapternotes' ? readChapterNotes(remote, labels) : remote;
         c.base = keysOf(d.want);
         out.pushed++;
       } else {
-        await this.write(c.docId, d.want, doc);
+        await this.write(c.docId, d.want, doc, 'notes');
         c.base = keysOf(d.want);
         out.pushed++;
       }
@@ -614,14 +615,24 @@ function bookName(book, by = book.nameBy) {
 // The Chapter Notes Doc read back: {chId: text}, by the headings in it.
 // Lines under a heading NEO doesn't know belong to the chapter above.
 function readChapterNotes(blocks, labels) {
-  const out = {};
+  const lines = {};
   let at = null;
   for (const b of blocks) {
-    if (B.isHeading(b) && labels.has(b.text)) { at = labels.get(b.text); out[at] = out[at] || ''; continue; }
+    if (B.isHeading(b) && labels.has(b.text)) { at = labels.get(b.text); lines[at] = lines[at] || []; continue; }
     if (!at) continue;
-    out[at] = (out[at] ? out[at] + '\n' : '') + B.plain(b);
+    lines[at].push(B.plain(b));
   }
+  const out = {};
+  for (const [k, v] of Object.entries(lines)) out[k] = trimGaps(v.map((x) => x.trim())).join('\n');
   return out;
+}
+
+// a list without the blank lines at its start and end
+function trimGaps(list, blank = (x) => !x) {
+  let a = 0, b = list.length;
+  while (a < b && blank(list[a])) a++;
+  while (b > a && blank(list[b - 1])) b--;
+  return list.slice(a, b);
 }
 
 // NEO-Drive's own comments (the reading-copy note, edits undone)
