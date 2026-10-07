@@ -76,6 +76,8 @@ test('first sync: a folder, a Master Manuscript and a Doc per chapter', async ()
   assert.ok(all.find((f) => f.appProperties.neoRole === 'chapters'), 'Chapters folder');
   assert.ok(await master());
   for (const id of await chIds()) assert.ok(await docFor(id), 'Doc for ' + id);
+  // named by part (no parts yet: part 0)
+  assert.deepEqual((await Promise.all((await chIds()).map(docFor))).map((d) => d.name), ['0.1: Cold Front', '0.2: The Keeper’s House', '0.3: The Labyrinth']);
   const [c1] = await chIds();
   const text = await fake({ do: 'text', id: (await docFor(c1)).id });
   assert.match(text, /^Chapter 1: Cold Front\nIt rained on the harbor\.\n\*\*\*\nMara counted coins\.\n/);
@@ -173,7 +175,7 @@ test('Name Book Folders By → Title: Subtitle renames the folder', async () => 
   await sync();
   const folder = (await files()).find((f) => f.mimeType.includes('folder') && !f.appProperties.neoRole);
   assert.equal(folder.name, 'The Lighthouse: Book One');
-  assert.equal((await master()).name, 'The Lighthouse: Book One — Master Manuscript');
+  assert.equal((await master()).name, 'The Lighthouse: Book One');
 });
 
 test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () => {
@@ -184,7 +186,8 @@ test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () =>
   await tick(300);
   await sync();
   const all = await files();
-  const deleted = all.find((f) => f.name === 'Deleted chapters');
+  const deleted = all.find((f) => f.appProperties.neoRole === 'deleted');
+  assert.match(deleted.name, / Deleted Chapters$/);
   assert.ok(deleted);
   assert.deepEqual(all.find((f) => f.id === doc.id).parents, [deleted.id]);
 });
@@ -211,6 +214,7 @@ test('a part is a folder holding its chapters; the Master gets a part page', asy
   for (const id of before) {
     const d = await docFor(id);
     if (d) assert.deepEqual(d.parents, [part.id], d.name);
+    if (d) assert.match(d.name, /^1\.\d+: /);
   }
   // the Master: NEO's export's pages, in the chapters' look
   const m = await fake({ do: 'doc', id: (await master()).id });

@@ -248,10 +248,15 @@
     const body = []; // master blocks after the contents page, with their owners
     const m = (b, owner = '') => ({ b, owner });
     let part = null;
+    // the number of the part a chapter sits in, for Docs named "1.1: Title":
+    // 0 before the first part; after the last part's chapters (an epilogue),
+    // the number after it
+    let section = 0, partsSeen = 0;
     for (const chId of book.chapterOrder) {
       const kind = chapterKind(chId);
       if (kind === 'contents') continue;
-      if (BACK_KINDS.includes(kind)) part = null;
+      if (BACK_KINDS.includes(kind) && part) { part = null; section = partsSeen + 1; }
+      const label = ((book.chapterTitles || {})[chId] || '').trim() || chapterName(chId);
       const html = liveHtml(chId);
       const all = blocksOf(html);
       const heads = headsFor(chId, kind, html, all);
@@ -259,6 +264,7 @@
       const name = heads.length ? heads.map((h) => h.text).join(' ') : (chapterHeading(chId) || chapterName(chId));
       if (kind === 'part') {
         part = chId;
+        section = ++partsSeen;
         // the folder and the contents line read "Part I: The Crossing"; the
         // part's page in the Master, "PART I:" over its title
         const partName = partSkip.get(chId) ? `${chapterName(chId)}: ${all[0].text}` : chapterName(chId);
@@ -267,10 +273,10 @@
         // the part's page: a little way down a new page
         heads.forEach((h, i) => body.push(m(i ? h : { ...h, pb: true, sa: 72 }, partName)));
         for (const b of blocks) body.push(m(b, partName));
-        if (blocks.length) entries.push({ chId, kind, heads, name: partName, blocks, part: chId });
+        if (blocks.length) entries.push({ chId, kind, heads, name: partName, label: partName, section, blocks, part: chId });
         continue;
       }
-      entries.push({ chId, kind, heads, name, blocks, part });
+      entries.push({ chId, kind, heads, name, label, section, blocks, part });
       if (heads.length && !FRONT_PAGES.includes(kind)) toc.push(m({ k: 'p', text: name, ind: part ? 'poetry' : 'flush' }, name));
       // each chapter starts a new page
       heads.forEach((h, i) => body.push(m(i ? h : { ...h, pb: true }, name)));
@@ -293,7 +299,7 @@
     const bookId = book.id;
     if (lastBook !== bookId) { lastBook = bookId; lastSig = ''; }
     const model = bookModel();
-    const sig = JSON.stringify([model.book, model.parts, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)]), model.master.length]);
+    const sig = JSON.stringify([model.book, model.parts, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, e.label, e.section, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)]), model.master.length]);
     syncing = true;
     try {
       const r = await window.neo.neoDrive({ op: 'sync', model: { ...model, dirty: force || sig !== lastSig, force: !!force } });

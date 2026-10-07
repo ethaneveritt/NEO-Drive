@@ -26,14 +26,18 @@ NEO-Drive asks Google for one permission only: **the files NEO-Drive itself crea
 
 ```
 The Lighthouse: Book One/                  the book (named by title, subtitle, or both)
-├── The Lighthouse — Master Manuscript     the whole book: a reading copy to share
+├── The Lighthouse: Book One               the Master Manuscript: the whole book, a reading copy to share
 └── Chapters/
-    ├── 01 · Prologue                  a Doc per chapter
-    ├── Part I: The Crossing/         a folder per part, holding its chapters
-    │   ├── 01 · Chapter 1: The Keeper’s House
-    │   └── 02 · Chapter 2: Low Tide
-    └── Deleted chapters/              a chapter deleted in NEO goes here — nothing is ever deleted
+    ├── 0.1: Epigraph                  a Doc per chapter, numbered by part
+    ├── 0.2: Prologue
+    └── Part I: The Crossing/         a folder per part, holding its chapters
+        ├── 1.1: The Keeper’s House
+        └── 1.2: Low Tide
+The Lighthouse: Book One Deleted Chapters/ a chapter deleted in NEO goes here — nothing is ever deleted.
+                                       Made beside the book's folder; move it anywhere you like.
 ```
+
+Prefer `01 · Chapter 1: The Keeper’s House`? **Google Drive → Number Chapter Docs → In Order.**
 
 The **chapter Docs** are set like a manuscript: Times New Roman 12, double-spaced, a bold centered heading (“Chapter 2: *Low Tide*”), `***` for scene breaks, italics and bold as you wrote them.
 

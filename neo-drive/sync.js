@@ -2,13 +2,13 @@
 //
 // For each book, in Drive:
 //   <book>/                          named by title, subtitle, or both
-//     <book> — Master Manuscript     the whole book, a reading copy, set
-//                                    like NEO's own Word export
+//     <book>                         the Master Manuscript: the whole book,
+//                                    a reading copy, laid out like NEO's export
 //     Chapters/
-//       01 · Prologue                a Doc per chapter
+//       0.1: Prologue                a Doc per chapter, numbered by part
 //       Part I: The Crossing/       a folder per part, holding its chapters
-//         01 · Chapter 1: …
-//       Deleted chapters/
+//         1.1: The Keeper's House
+//   <book> Deleted Chapters/         beside the book's folder (move it anywhere)
 // The window (renderer.js) hands
 // over the open book as blocks every few seconds; this decides, chapter by
 // chapter, what moves which way:
@@ -119,6 +119,11 @@ class Sync {
 
     // ---- folders: Chapters, and one per part
     st.chaptersFolderId = await this.ensureSubfolder(st.chaptersFolderId, listed, tagged('neoRole', 'chapters', FOLDER), 'Chapters', st.folderId, { neoBook: book.uuid, neoRole: 'chapters' });
+    if (!st.deletedFolderId) {
+      const d = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'deleted');
+      if (d) st.deletedFolderId = d.id;
+    }
+    await this.tidyDeleted(st, listed, book);
     st.parts = st.parts || {};
     for (const part of model.parts || []) {
       const known = st.parts[part.partId];
@@ -140,13 +145,7 @@ class Sync {
     for (const e of model.entries) {
       const want = docWant(e);
       const where = containerOf(e);
-      let name;
-      if (e.kind === 'part') name = `00 · ${e.name}`; // a part's own page heads its folder
-      else {
-        const n = (counts.get(where) || 0) + 1;
-        counts.set(where, n);
-        name = `${pad(n)} · ${e.name}`;
-      }
+      const name = docName(e, book.numbering, counts, where);
       let c = st.chapters[e.chId];
       if (c && !listed.has(c.docId)) {
         // trashed, or this computer had the wrong id: look for it by its tag
@@ -277,17 +276,38 @@ class Sync {
     if (found) return found.id;
     return (await this.api.createFile({ name, mimeType: FOLDER, parents: [parent], appProperties })).id;
   }
+  // "<book> Deleted Chapters": made beside the book's folder; found by its
+  // tag wherever it is moved to after that
   async ensureDeleted(st, listed, book) {
     if (st.deletedFolderId && listed.has(st.deletedFolderId)) return;
     const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'deleted');
-    st.deletedFolderId = found ? found.id : (await this.api.createFile({ name: 'Deleted chapters', mimeType: FOLDER, parents: [st.chaptersFolderId || st.folderId], appProperties: { neoBook: book.uuid, neoRole: 'deleted' } })).id;
-    listed.set(st.deletedFolderId, { id: st.deletedFolderId, parents: [st.chaptersFolderId] });
+    const f = found || await this.api.createFile({ name: deletedName(book), mimeType: FOLDER, parents: st.folderParents || [], appProperties: { neoBook: book.uuid, neoRole: 'deleted' } });
+    st.deletedFolderId = f.id;
+    st.deletedPlaced = true;
+    listed.set(f.id, f);
+  }
+  // an existing Deleted Chapters folder: named for the book; and, once, out
+  // of the Chapters folder (where 1.4.8–1.4.101 put it) to beside the book's
+  async tidyDeleted(st, listed, book) {
+    const f = st.deletedFolderId && listed.get(st.deletedFolderId);
+    if (!f) return;
+    const name = deletedName(book);
+    const move = !st.deletedPlaced && (f.parents || []).includes(st.chaptersFolderId);
+    if (f.name !== name || move) {
+      await this.api.updateFile(f.id, {
+        name,
+        ...(move ? { addParents: st.folderParents || [], removeParents: [st.chaptersFolderId] } : {})
+      });
+      f.name = name;
+    }
+    st.deletedPlaced = true;
   }
 
   async ensureFolder(st, book) {
     if (st.folderId) {
       try {
         const f = await this.api.getFile(st.folderId);
+        st.folderParents = f.parents || [];
         if (f.trashed) st.folderId = null;
         else if (f.name !== bookName(book)) await this.api.updateFile(st.folderId, { name: bookName(book) });
       } catch (err) {
@@ -298,8 +318,9 @@ class Sync {
     if (!st.folderId) {
       const found = await this.api.listFiles(`appProperties has { key='neoBook' and value='${esc(book.uuid)}' } and mimeType = '${FOLDER}' and trashed = false`);
       const mine = found.find((f) => !f.appProperties || !f.appProperties.neoRole);
-      if (mine) st.folderId = mine.id;
-      else st.folderId = (await this.api.createFile({ name: bookName(book), mimeType: FOLDER, appProperties: { neoBook: book.uuid } })).id;
+      const f = mine || await this.api.createFile({ name: bookName(book), mimeType: FOLDER, appProperties: { neoBook: book.uuid } });
+      st.folderId = f.id;
+      st.folderParents = f.parents || [];
       // a new folder: forget the Docs this computer thought it knew
       if (!mine) { st.chapters = {}; st.masterId = null; st.deletedFolderId = null; st.chaptersFolderId = null; st.parts = {}; }
     }
@@ -323,7 +344,7 @@ class Sync {
         for (const b of e.blocks) add(b, e.name);
       }
     }
-    const name = `${bookName(book)} — Master Manuscript`;
+    const name = bookName(book);
 
     if (st.masterId && !listed.has(st.masterId)) {
       const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'master');
@@ -457,6 +478,29 @@ function bookName(book, by = book.nameBy) {
   if (by === 'subtitle') return sub;
   if (by === 'both') return `${title}: ${sub}`;
   return title;
+}
+
+// The folder deleted chapters go to.
+function deletedName(book) { return `${bookName(book)} Deleted Chapters`; }
+
+// A chapter Doc's name, by the setting in the Google Drive menu:
+//   'part'  — numbered by part: 0.1: Epigraph, 0.2: Prologue, 1.1: A Dead
+//             God's House (part 1, chapter 1). e.section is the part's
+//             number (0 before the first part); e.label the chapter's title,
+//             or its name when it has none. A part's own page is n.0.
+//   'order' — numbered within its folder: 01 · Chapter 1: The Keeper's House
+function docName(e, numbering, counts, where) {
+  if (numbering === 'order' || typeof e.section !== 'number') {
+    if (e.kind === 'part') return `00 · ${e.name}`; // a part's own page heads its folder
+    const n = (counts.get(where) || 0) + 1;
+    counts.set(where, n);
+    return `${pad(n)} · ${e.name}`;
+  }
+  if (e.kind === 'part') return `${e.section}.0: ${e.label || e.name}`;
+  const key = 'section ' + e.section;
+  const n = (counts.get(key) || 0) + 1;
+  counts.set(key, n);
+  return `${e.section}.${n}: ${e.label || e.name}`;
 }
 
 // a chapter's headings: as the window sent them (heads), or one plain heading
