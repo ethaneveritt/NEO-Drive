@@ -1,0 +1,53 @@
+# NEO-Drive: installs a release on a clean Windows machine, starts it, and
+# reports what happened (as annotations, readable without the raw log).
+# Run by hand from the Actions tab.
+
+name: NEO-Drive diagnose a release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to test (e.g. v1.4.4)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  launch:
+    runs-on: windows-latest
+    steps:
+      - name: Install and launch
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ inputs.tag }}"
+          gh release download $tag -R ${{ github.repository }} -p "NEO-Setup-*.exe" -D dl
+          $setup = Get-ChildItem dl -Filter "NEO-Setup-*.exe" | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/S" -Wait
+          Start-Sleep -Seconds 5
+          Get-Process | Where-Object { $_.ProcessName -like "*NEO*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter "NEO.exe" | Select-Object -First 1
+          if (-not $exe) { Write-Output "::error::NEO.exe not found after install"; Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Depth 2 | Select-Object -First 40 | ForEach-Object { Write-Output "::notice::$($_.FullName)" }; exit 1 }
+          Write-Output "::notice::Installed at $($exe.FullName)"
+          $env:ELECTRON_ENABLE_LOGGING = "1"
+          $env:ELECTRON_ENABLE_STACK_DUMPING = "1"
+          $p = Start-Process $exe.FullName -ArgumentList "--enable-logging" -RedirectStandardOutput out.txt -RedirectStandardError err.txt -PassThru
+          Start-Sleep -Seconds 25
+          $alive = -not $p.HasExited
+          $code = if ($p.HasExited) { $p.ExitCode } else { "still running" }
+          Write-Output "::notice::NEO alive after 25s: $alive (exit: $code)"
+          $lib = Test-Path "$env:USERPROFILE\Documents\NEO Library\library.json"
+          Write-Output "::notice::Library created: $lib"
+          foreach ($f in @("out.txt", "err.txt", "$env:USERPROFILE\Documents\NEO Library\neo-errors.log")) {
+            if (Test-Path $f) {
+              $lines = Get-Content $f -Tail 60 | Where-Object { $_ -notmatch "dbus|gpu_init|DevTools" }
+              $text = ($lines -join " | ")
+              if ($text.Length -gt 3500) { $text = $text.Substring($text.Length - 3500) }
+              if ($text) { Write-Output "::warning title=$f::$text" }
+            }
+          }
+          if (-not $alive) { exit 1 }
+          Stop-Process -Id $p.Id -Force
