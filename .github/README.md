@@ -83,6 +83,7 @@ The Notepad and Chapter Notes are in the book's **Notes** folder in Drive, and t
 ## Also in NEO-Drive
 
 - **Right-click → Italic / Bold / Underline** on selected text (Ctrl+I / B / U work too).
+- **View → Show “What happens here…” in the Chapters Pane**: untick it to hide the empty outline-note line under each chapter in the left pane (notes you've written still show).
 - **Right-click → Fix Apostrophes in This Chapter**: turns every apostrophe and single quote the right way — ’em, ’90s, don’t, ‘quoted’ — lists the judgment calls for you to check, and undoes in one step.
 
 ## For developers

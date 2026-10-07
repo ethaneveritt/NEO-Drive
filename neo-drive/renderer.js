@@ -464,6 +464,7 @@
   if (window.neo.neoDrive && DB) {
     window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) { drive = { ...drive, ...s }; if (Panels) Panels.setConnected(drive.connected); } }).catch(() => {});
     setInterval(() => { driveTick(false).catch(() => {}); }, SYNC_EVERY);
+    window.neo.neoDrive({ op: 'prefs' }).then((p) => { if (p) document.body.classList.toggle('nd-no-nav-hints', p.navHints === false); }).catch(() => {});
     window.NeoDrive = { tick: driveTick, model: () => bookModel() }; // for tests
   }
 
@@ -475,6 +476,7 @@
     if (msg.type === 'nd-status') driveStatus(msg);
     if (msg.type === 'nd-open') openInDrive(msg.what);
     if (msg.type === 'nd-addComment' && Panels) Panels.startComment();
+    if (msg.type === 'nd-prefs') document.body.classList.toggle('nd-no-nav-hints', msg.navHints === false);
     if (msg.type === 'nd-syncNow') {
       if (!book) { if (!msg.quiet) toast(t('Open a book to sync it.')); return; }
       driveTick(true).then((r) => { if (r && r.ok && !msg.quiet) toast(t('Synced with Google Drive.')); });
