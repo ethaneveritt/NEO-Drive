@@ -180,7 +180,7 @@ test('Name Book Folders By → Title: Subtitle renames the folder', async () => 
   assert.equal((await master()).name, 'The Lighthouse: Book One');
 });
 
-const toggle = (m) => js(`document.querySelector('#nd-toggles button[data-m="${m}"]').click()`);
+const toggle = (m) => js(`document.querySelector('#nd-dock .nd-bar button[data-m="${m}"]').click()`);
 const cards = () => js(`[...document.querySelectorAll('#nd-margin .nd-card')].map((c) => c.textContent.replace(/\\s+/g, ' ').trim())`);
 
 test('Google Docs comments sit in the margin beside their passage, highlighted; clicking Comments again puts them away', async () => {
@@ -188,8 +188,8 @@ test('Google Docs comments sit in the margin beside their passage, highlighted; 
   const doc = await docFor(c1);
   await fake({ do: 'readerComment', id: doc.id, comment: { content: 'Love this line.', quote: 'rained on the harbor', author: 'Faye', replies: [{ content: 'Same!', author: 'Sam' }] } });
   await sync();
-  assert.equal(await js(`document.querySelector('#nd-toggles').hidden`), false);
-  assert.match(await js(`document.querySelector('#nd-toggles [data-m="comments"]').textContent`), /Comments\s*1/);
+  assert.equal(await js(`document.querySelector('#nd-dock').hidden`), false);
+  assert.match(await js(`document.querySelector('#nd-dock [data-m="comments"]').textContent`), /Comments\s*1/);
   await toggle('comments');
   await tick(300);
   const [card] = await cards();
@@ -260,7 +260,7 @@ test('the Notes tab: Notepad on top, Comments listed with Jump to comment', asyn
   assert.deepEqual(await js(`[...document.querySelectorAll('#nd-notes-head button')].map((b) => [b.textContent, b.classList.contains('on')])`),
     [['Notepad', true], ['Comments', false], ['Chapter Notes', false]]);
   assert.equal(await js(`document.getElementById('aux-editor').hidden`), false);
-  assert.equal(await js(`document.getElementById('nd-toggles').hidden`), true, 'the margin buttons belong to the manuscript');
+  assert.equal(await js(`document.getElementById('nd-dock').hidden`), true, 'the dock belongs to the manuscript');
   await js(`document.querySelector('#nd-notes-head [data-v="comments"]').click()`);
   await tick(200);
   assert.equal(await js(`document.getElementById('aux-editor').hidden`), true);
@@ -334,6 +334,86 @@ test('notes written in the Docs come back into NEO', async () => {
   await tick(200);
   assert.equal(await js(`document.querySelector('.nd-list textarea').value`), 'Mara needs a limp.\nMake the rain colder.');
   await js(`switchTab('manuscript')`);
+  await tick(200);
+});
+
+test('the dock: NEO\'s Notes & Comments pane gives way to it; it tucks into the edge; the page makes room, and narrows in a small window', async () => {
+  assert.equal(await js(`getComputedStyle(document.getElementById('side-pane')).display`), 'none');
+  assert.equal(await js(`getComputedStyle(document.getElementById('side-hotzone')).display`), 'none');
+  // tuck away: only the arrow stays
+  await js(`document.querySelector('#nd-dock .nd-arrow').click()`);
+  await tick(200);
+  assert.equal(await js(`getComputedStyle(document.querySelector('#nd-dock .nd-bar')).display`), 'none');
+  assert.notEqual(await js(`getComputedStyle(document.querySelector('#nd-dock .nd-tab')).display`), 'none');
+  await js(`document.querySelector('#nd-dock .nd-tab').click()`);
+  await tick(200);
+  assert.notEqual(await js(`getComputedStyle(document.querySelector('#nd-dock .nd-bar')).display`), 'none');
+  const win = BrowserWindow.getAllWindows()[0];
+  const was = win.getSize();
+  for (const w of [1400, 900, 700]) {
+    win.setSize(w, 800);
+    await tick(300);
+    await toggle('notepad');
+    await tick(500);
+    const g = await js(`(() => {
+      const page = document.getElementById('paper').getBoundingClientRect();
+      const dock = document.getElementById('nd-dock').getBoundingClientRect();
+      return { pageRight: page.right, pageLeft: page.left, dockLeft: dock.left, dockW: dock.width, vw: innerWidth };
+    })()`);
+    assert.ok(g.pageRight <= g.dockLeft + 1, 'page beside the dock at ' + w + ': ' + JSON.stringify(g));
+    assert.ok(g.pageLeft >= 0, 'page on screen at ' + w + ': ' + JSON.stringify(g));
+    assert.ok(g.dockW <= g.vw * 0.36, 'dock narrows at ' + w + ': ' + JSON.stringify(g));
+    if (process.env.SHOT && w === 900) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-900.png'), (await wc.capturePage()).toPNG());
+    await toggle('notepad');
+    await tick(200);
+  }
+  win.setSize(was[0], was[1]);
+  await tick(300);
+});
+
+test('placeholders (Ctrl+Shift+X) are comments: the flag shows only while Comments is open, its note beside it', async () => {
+  const [, c2] = await chIds();
+  await js(`(() => {
+    const p = document.querySelector('.chapter[data-id="${c2}"] .chapter-body p');
+    p.closest('.chapter-body').focus();
+    const r = document.createRange(); r.selectNodeContents(p); r.collapse(false);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+    insertPlaceholder();
+  })()`);
+  await tick(400);
+  assert.equal(await js('NeoDrivePanels.mode'), 'comments');
+  assert.equal(await js(`document.activeElement === document.querySelector('#nd-margin .nd-flag textarea')`), true);
+  await js(`document.execCommand('insertText', false, 'Check the furnace.')`);
+  await tick(800);
+  assert.equal(await js(`stickies.find((s) => !s.resolved).text`), 'Check the furnace.');
+  const pos = await js(`(() => {
+    const m = document.querySelector('#chapters .ph-mark').getBoundingClientRect();
+    const c = document.querySelector('#nd-margin .nd-flag').getBoundingClientRect();
+    return { dy: Math.abs(c.top - m.top), shown: m.height > 0 };
+  })()`);
+  assert.ok(pos.shown && pos.dy < 3, JSON.stringify(pos));
+  if (process.env.SHOT) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-flag.png'), (await wc.capturePage()).toPNG());
+  // Enter: back to the page, past the flag
+  await js(`document.querySelector('#nd-margin .nd-flag textarea').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+  await tick(200);
+  assert.equal(await js(`!!document.activeElement.closest('.chapter-body')`), true);
+  await toggle('comments');
+  await tick(200);
+  assert.equal(await js(`getComputedStyle(document.querySelector('#chapters .ph-mark')).display`), 'none', 'flag hidden while Comments is closed');
+  await js(`switchTab('notes')`);
+  await tick(300);
+  await js(`document.querySelector('#nd-notes-head [data-v="comments"]').click()`);
+  await tick(200);
+  assert.match(await js(`document.querySelector('.nd-list').textContent`), /Placeholder[\s\S]*Check the furnace\./);
+  await js(`[...document.querySelectorAll('.nd-list .nd-item')].find((x) => /Check the furnace/.test(x.textContent)).querySelector('.go').click()`);
+  await tick(400);
+  assert.equal(await js('currentTab'), 'manuscript');
+  assert.equal(await js(`getComputedStyle(document.querySelector('#chapters .ph-mark')).display`), 'inline');
+  await js(`document.querySelector('#nd-margin .nd-flag .resolve').click()`);
+  await tick(400);
+  assert.equal(await js(`document.querySelectorAll('#chapters .ph-mark').length`), 0);
+  assert.equal(await js(`document.querySelectorAll('#nd-margin .nd-flag').length`), 0);
+  await toggle('comments');
   await tick(200);
 });
 

@@ -57,13 +57,14 @@ Move a chapter to another part in NEO and its Doc moves folders with it. Move th
 
 **The Master Manuscript is a reading copy.** Readers comment on it. If anyone types in it, the edit is undone within seconds, a comment on the Doc quotes what was typed and says where to make the change, and NEO shows it to you. (Google Docs files a comment made by an app under **All comments** — the speech-bubble button at the top right of the Doc — rather than in the margin.)
 
-**Comments, Chapter Notes, Notepad.** Three quiet words sit at the top right of the manuscript. Click one to open it in the space beside the page; click it again to put it away. One is open at a time.
+**Comments, Chapter Notes, Notepad.** A small bar sticks out from the right edge of the window. Click one to open it as a pane down the right side; click it again to close it. One is open at a time. The page moves over to make room, and narrows in a small window. The arrow (›) tucks the bar into the edge, leaving only ‹ to bring it back. This takes the place of NEO's own Notes & Comments pane on the manuscript.
 
-- **Comments**: open comments from the chapter Docs and the Master Manuscript, in the margin beside the words they're on, which are highlighted. Each shows who wrote it and its replies, with **Resolve** (resolved in Google Docs too); your own also have **Edit**. To make one, select words and right-click → **Add Comment…** (or Ctrl+Alt+M); it goes to the chapter's Google Doc. Comments never touch your text. Choose where they come from in **Google Drive → Show Google Docs Comments in NEO**: chapters and the Master, chapters only, or off.
+- **Comments**: open comments from the chapter Docs and the Master Manuscript, level with the words they're on, which are highlighted. Each shows who wrote it and its replies, with **Resolve** (resolved in Google Docs too); your own also have **Edit**. To make one, select words and right-click → **Add Comment…** (or Ctrl+Alt+M); it goes to the chapter's Google Doc. Comments never touch your text. Choose where they come from in **Google Drive → Show Google Docs Comments in NEO**: chapters and the Master, chapters only, or off.
+- **Placeholders** are comments too: Ctrl+Shift+X while writing plants a flag and opens its note beside it; type what needs doing, press Enter, and you're back in the page past the flag. Flags show in the page only while Comments is open. Placeholders stay in NEO (they don't go to Google Docs).
 - **Chapter Notes**: a note for the chapter you're in; it follows you from chapter to chapter.
 - **Notepad**: the whole book's notes (NEO's Notes page).
 
-The **Notes** tab has the same three at its top: **Notepad** (the Notes page as always), **Comments** (every comment, by chapter, with **Jump to comment**) and **Chapter Notes** (every chapter's note in one place).
+The **Notes** tab has the same three at its top: **Notepad** (the Notes page as always), **Comments** (every comment and placeholder, by chapter, with **Jump to**) and **Chapter Notes** (every chapter's note in one place).
 
 The Notepad and Chapter Notes are in the book's **Notes** folder in Drive, and they work both ways: jot an idea into the Notepad Doc on your phone and it's in NEO next time it syncs. If a note changed in both places at once, nothing is lost: what's new in the Doc is added under what's in NEO. The Darlings Doc is a copy of your Darlings tab, kept for safekeeping; change Darlings in NEO.
 
