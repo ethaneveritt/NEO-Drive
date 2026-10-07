@@ -64,6 +64,8 @@ test('the Google Drive menu sits before Help and shows the account', async () =>
   const sub = Menu.getApplicationMenu().items[at].submenu.items.map((i) => i.label);
   assert.ok(sub.includes('Connected as test@example.com'), sub.join(', '));
   assert.ok(sub.includes('Sync Now'));
+  assert.ok(sub.includes('Name the Master Manuscript By'));
+  assert.ok(!sub.includes('Number Chapter Docs'));
   const naming = Menu.getApplicationMenu().items[at].submenu.items.find((i) => i.label === 'Name Book Folders By');
   assert.deepEqual(naming.submenu.items.map((i) => [i.label, i.checked]), [['Title', true], ['Subtitle', false], ['Title: Subtitle', false]]);
 });
@@ -76,8 +78,8 @@ test('first sync: a folder, a Master Manuscript and a Doc per chapter', async ()
   assert.ok(all.find((f) => f.appProperties.neoRole === 'chapters'), 'Chapters folder');
   assert.ok(await master());
   for (const id of await chIds()) assert.ok(await docFor(id), 'Doc for ' + id);
-  // named by part (no parts yet: part 0)
-  assert.deepEqual((await Promise.all((await chIds()).map(docFor))).map((d) => d.name), ['0.1: Cold Front', '0.2: The Keeper’s House', '0.3: The Labyrinth']);
+  // named by part (a book without parts: its chapters are part 1)
+  assert.deepEqual((await Promise.all((await chIds()).map(docFor))).map((d) => d.name), ['1.1: Cold Front', '1.2: The Keeper’s House', '1.3: The Labyrinth']);
   const [c1] = await chIds();
   const text = await fake({ do: 'text', id: (await docFor(c1)).id });
   assert.match(text, /^Chapter 1: Cold Front\nIt rained on the harbor\.\n\*\*\*\nMara counted coins\.\n/);

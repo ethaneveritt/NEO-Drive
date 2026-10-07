@@ -248,14 +248,19 @@
     const body = []; // master blocks after the contents page, with their owners
     const m = (b, owner = '') => ({ b, owner });
     let part = null;
-    // the number of the part a chapter sits in, for Docs named "1.1: Title":
-    // 0 before the first part; after the last part's chapters (an epilogue),
-    // the number after it
+    // The number of the part a chapter sits in, for Docs named "1.1: Title":
+    // 0 for what comes before (an epigraph, a prologue), then each part's
+    // number; after the last part's chapters (an epilogue, a note), the
+    // number after it. A book without parts counts its chapters as part 1.
+    const hasParts = book.chapterOrder.some((c) => chapterKind(c) === 'part');
     let section = 0, partsSeen = 0;
     for (const chId of book.chapterOrder) {
       const kind = chapterKind(chId);
       if (kind === 'contents') continue;
-      if (BACK_KINDS.includes(kind) && part) { part = null; section = partsSeen + 1; }
+      if (BACK_KINDS.includes(kind)) {
+        if (part || !hasParts) section = partsSeen + 1 + (hasParts ? 0 : 1);
+        part = null;
+      } else if (!hasParts && section === 0 && (kind === 'chapter' || kind === 'unnumbered')) section = 1;
       const label = ((book.chapterTitles || {})[chId] || '').trim() || chapterName(chId);
       const html = liveHtml(chId);
       const all = blocksOf(html);
