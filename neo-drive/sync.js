@@ -140,6 +140,7 @@ class Sync {
     const ours = new Set([st.folderId, st.chaptersFolderId, st.deletedFolderId, ...Object.values(st.parts).map((x) => x.id)].filter(Boolean));
     const containerOf = (e) => (e.part && st.parts[e.part] ? st.parts[e.part].id : st.chaptersFolderId);
     const counts = new Map();
+    const docNames = new Map(); // chId -> its Doc's name, for the Chapter Notes Doc
 
     const docWant = (e) => headsOf(e).concat(e.blocks.map((b) => B.normalize(b)));
 
@@ -148,6 +149,7 @@ class Sync {
       const want = docWant(e);
       const where = containerOf(e);
       const name = docName(e, counts);
+      docNames.set(e.chId, name);
       let c = st.chapters[e.chId];
       if (c && !listed.has(c.docId)) {
         // trashed, or this computer had the wrong id: look for it by its tag
@@ -231,6 +233,15 @@ class Sync {
       if (!err.stale) throw err;
     }
 
+    // ---- Notes: the Notepad and Chapter Notes (both ways), Darlings (a copy)
+    if (model.notes) {
+      try {
+        await this.syncNotes(st, model, listed, out, docNames);
+      } catch (err) {
+        if (!err.stale) throw err;
+      }
+    }
+
     // ---- comments, for NEO's Notes & Comments pane
     await this.readComments(st, model, out, t0);
     this.save(book.uuid, st);
@@ -296,7 +307,7 @@ class Sync {
       for (const c of list) {
         if (c.deleted || c.resolved || ours(c)) continue;
         all.push({
-          id: c.id, docId: d.docId, chId: d.chId, where: d.where,
+          id: c.id, docId: d.docId, chId: d.chId, where: d.where, mine: !!(c.author && c.author.me),
           author: (c.author && c.author.displayName) || '', content: c.content || '',
           quote: (c.quotedFileContent && c.quotedFileContent.value) || '',
           created: c.createdTime || '',
@@ -308,6 +319,85 @@ class Sync {
     out.commentsFetched = true;
     st.commentsAt = now;
     st.commentsFrom = from;
+  }
+
+  // The book's Notes folder: three Docs.
+  //   Notepad        NEO's Notes page, both ways
+  //   Chapter Notes  a heading per chapter (named as its Doc is), its notes
+  //                  under it; both ways
+  //   Darlings       the words cut from the book, a copy (edits there are
+  //                  set back)
+  async syncNotes(st, model, listed, out, docNames) {
+    const { book } = model;
+    st.notesFolderId = await this.ensureSubfolder(st.notesFolderId, listed, [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'notes'), 'Notes', st.folderId, { neoBook: book.uuid, neoRole: 'notes' });
+    st.notes = st.notes || {};
+    const note = (text, extra = {}) => B.normalize({ k: 'p', text, ind: 'flush', ls: 115, ...extra });
+    const lines = (text) => String(text || '').split(/\n+/).map((x) => x.trim()).filter(Boolean).map((x) => note(x));
+
+    // Chapter Notes: every chapter's heading, so notes can be added under
+    // any of them in Docs too
+    const labels = new Map();
+    const chapterWant = [];
+    for (const e of model.entries) {
+      const label = docNames.get(e.chId) || e.name;
+      labels.set(label, e.chId);
+      chapterWant.push(B.heading(label, label.length, { ls: 115, sa: chapterWant.length ? 12 : 0 }));
+      chapterWant.push(...lines((model.notes.chapters || {})[e.chId]));
+    }
+    const darlingsWant = [];
+    for (const d of model.notes.darlings || []) {
+      const label = [d.label, d.date].filter(Boolean).join(' — ') || 'Darling';
+      darlingsWant.push(B.heading(label, label.length, { ls: 115, sa: darlingsWant.length ? 12 : 0 }));
+      darlingsWant.push(...lines(d.text));
+    }
+    const docs = [
+      { key: 'notepad', name: 'Notepad', want: (model.notes.notepad || []).map((b) => B.normalize({ ...b, ind: 'flush', ls: 115 })), twoWay: true },
+      { key: 'chapternotes', name: 'Chapter Notes', want: chapterWant, twoWay: true },
+      { key: 'darlings', name: 'Darlings', want: darlingsWant, twoWay: false }
+    ];
+    out.notesPulls = {};
+    out.notesConflicts = {};
+    for (const d of docs) {
+      let c = st.notes[d.key];
+      if (c && !listed.has(c.docId)) c = null;
+      if (!c) {
+        const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoNote === d.key && f.mimeType === DOC);
+        if (found) c = st.notes[d.key] = { docId: found.id, base: null, version: null };
+        else {
+          const f = await this.api.createFile({ name: d.name, mimeType: DOC, parents: [st.notesFolderId], appProperties: { neoBook: book.uuid, neoNote: d.key } });
+          await this.write(f.id, d.want);
+          st.notes[d.key] = { docId: f.id, base: keysOf(d.want), version: (await this.api.getFile(f.id)).version };
+          out.created++;
+          continue;
+        }
+      }
+      const lv = listed.get(c.docId);
+      const localChanged = !c.base || !sameKeys(d.want, c.base);
+      if (!localChanged && lv && c.base && lv.version === c.version) continue;
+      const doc = await this.api.getDoc(c.docId);
+      const remote = B.fromDoc(doc);
+      const remoteChanged = !c.base || !sameKeys(remote, c.base);
+      if (!d.twoWay) {
+        // a copy: whatever was typed there gives way to the book's own
+        if (!sameKeys(remote, keysOf(d.want))) { await this.write(c.docId, d.want, doc); out.pushed++; }
+        c.base = keysOf(d.want);
+      } else if (!c.base && sameBlocks(remote, d.want)) {
+        c.base = keysOf(d.want);
+      } else if (remoteChanged && !localChanged) {
+        out.notesPulls[d.key] = d.key === 'chapternotes' ? readChapterNotes(remote, labels) : remote;
+        c.base = keysOf(remote);
+      } else if (remoteChanged && localChanged) {
+        await this.write(c.docId, d.want, doc);
+        if (!sameBlocks(remote, d.want)) out.notesConflicts[d.key] = d.key === 'chapternotes' ? readChapterNotes(remote, labels) : remote;
+        c.base = keysOf(d.want);
+        out.pushed++;
+      } else {
+        await this.write(c.docId, d.want, doc);
+        c.base = keysOf(d.want);
+        out.pushed++;
+      }
+      c.version = (await this.api.getFile(c.docId)).version;
+    }
   }
 
   // A folder of ours: the one we know if it's still there, else one tagged
@@ -465,7 +555,7 @@ class Sync {
         u.before ? `Original: “${clip(u.before)}”` : 'Original: (nothing here)',
         u.after ? `Your change: “${clip(u.after)}”` : 'Your change: (deleted)'
       ];
-      try { await this.api.createComment(st.masterId, lines.join('\n')); } catch (err) { this.log('master comment', err); }
+      try { await this.api.createComment(st.masterId, lines.join('\n')); } catch (err) { this.log('master comment', err); out.commentsError = String((err && err.message) || err); }
     }
     st.masterBase = keysOf(want);
     st.masterOwner = owner;
@@ -519,6 +609,19 @@ function bookName(book, by = book.nameBy) {
   if (by === 'subtitle') return sub;
   if (by === 'both') return `${title}: ${sub}`;
   return title;
+}
+
+// The Chapter Notes Doc read back: {chId: text}, by the headings in it.
+// Lines under a heading NEO doesn't know belong to the chapter above.
+function readChapterNotes(blocks, labels) {
+  const out = {};
+  let at = null;
+  for (const b of blocks) {
+    if (B.isHeading(b) && labels.has(b.text)) { at = labels.get(b.text); out[at] = out[at] || ''; continue; }
+    if (!at) continue;
+    out[at] = (out[at] ? out[at] + '\n' : '') + B.plain(b);
+  }
+  return out;
 }
 
 // NEO-Drive's own comments (the reading-copy note, edits undone)

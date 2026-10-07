@@ -8,7 +8,7 @@ Ethan Everitt's personal build of [NEO](https://github.com/hughhowey/neo), Hugh 
 - **Right-click → Fix Apostrophes in This Chapter.** Turns every apostrophe and single quote the right way (’em, ’90s, don’t, ‘quoted’), lists the judgment calls so you can check them, and undoes in one step.
 - **Updates come from this repo**, not Hugh's, so an update never replaces this build with plain NEO.
 - **Google Drive sync**: a folder per book, a Master Manuscript Doc (a reading copy: edits there are undone and noted in a comment), a Doc per chapter, edits made in chapter Docs coming back into NEO, version N / version G when both sides changed, deleted chapters kept in a "Deleted chapters" folder. User-facing description: [.github/README.md](.github/README.md).
-- **Google Docs comments in NEO's Notes & Comments pane**, with Go to and Resolve (resolves in Docs).
+- **Comments, Chapter Notes, Notepad** beside the page (top-right switches, one open at a time): Google Docs comments in the margin by their highlighted passage, with Resolve / Edit / Add Comment; a note per chapter; the book's Notes page. The Notes tab gets the same three as its heading. Notepad and Chapter Notes sync both ways with a Notes folder in Drive (Darlings is a copy).
 
 ## How it stays current
 
@@ -27,7 +27,8 @@ To keep merges with Hugh's code painless, nearly everything lives in its own fil
 | File | Role |
 |---|---|
 | `neo-drive/main.js` | Main-process additions: right-click menu items, release location |
-| `neo-drive/renderer.js` | Window-side additions: formatting, Fix Apostrophes and its report |
+| `neo-drive/renderer.js` | Window-side additions: formatting, Fix Apostrophes and its report, the sync tick |
+| `neo-drive/panels.js` | The switches at the top right, margin comments (CSS Highlight API, cards level with their passages), Chapter Notes (`neo-drive-chapter-notes.json` beside the book), the Notepad (NEO's `notes` page), and the Notes tab's heading |
 | `neo-drive/apostrophes.js` | The apostrophe rules (pure functions) |
 | `scripts/neo-drive-*.test.js` | Unit tests (`node --test scripts/neo-drive-*.test.js`) |
 | `scripts/neo-drive.e2e.js` | End-to-end tests on a throwaway library (`npx electron scripts/neo-drive.e2e.js`) |
@@ -41,6 +42,6 @@ The window side (`renderer.js`) hands the open book to the engine every five sec
 
 The Google client ID and secret come from the repo's Actions secrets `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, written into `neo-drive/google-client.json` at build time (gitignored). For a development run: `NEO_DRIVE_CLIENT_ID=… NEO_DRIVE_CLIENT_SECRET=… npm start`.
 
-Hugh's files are touched only at lines marked `NEO-Drive hook`: the script tags in `index.html`, one line in `preload.js` (`window.neo.neoDrive`), and four lines in `main.js` (require, right-click menu, app menu, release location). The README visitors see is `.github/README.md`, so Hugh's `README.md` is never edited.
+Hugh's files are touched only at lines marked `NEO-Drive hook`: the script tags in `index.html` (apostrophes, blocks, panels, renderer), one line in `preload.js` (`window.neo.neoDrive`), and four lines in `main.js` (require, right-click menu, app menu, release location). The README visitors see is `.github/README.md`, so Hugh's `README.md` is never edited.
 
 Hugh's own workflows (`build.yml`, `pocket.yml`) are disabled in this repo's Actions settings, so they never run here.

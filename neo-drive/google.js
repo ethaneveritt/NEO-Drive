@@ -258,8 +258,15 @@ class Google {
     } while (pageToken);
     return out;
   }
-  createComment(fileId, content) {
-    return this.request('POST', `${DRIVE}/files/${encodeURIComponent(fileId)}/comments?fields=id,content,createdTime`, { content });
+  // quote: the passage the comment is about. (Google Docs shows a comment
+  // made this way in its comment list, quoting the passage; it can't be
+  // pinned to the text by an outside app.)
+  createComment(fileId, content, quote) {
+    return this.request('POST', `${DRIVE}/files/${encodeURIComponent(fileId)}/comments?fields=id,content,createdTime,author(displayName,me),quotedFileContent`,
+      { content, ...(quote ? { quotedFileContent: { mimeType: 'text/plain', value: quote } } : {}) });
+  }
+  updateComment(fileId, commentId, content) {
+    return this.request('PATCH', `${DRIVE}/files/${encodeURIComponent(fileId)}/comments/${encodeURIComponent(commentId)}?fields=id,content`, { content });
   }
   async listComments(fileId) {
     const out = [];

@@ -27,6 +27,10 @@ NEO-Drive asks Google for one permission only: **the files NEO-Drive itself crea
 ```
 The Lighthouse: Book One/                  the book (named by title, subtitle, or both)
 ├── The Lighthouse: Book One               the Master Manuscript: the whole book, a reading copy to share
+├── Notes/
+│   ├── Notepad                        NEO's Notes page — write in either place
+│   ├── Chapter Notes                  each chapter's notes, under its name — write in either place
+│   └── Darlings                       what you cut, a copy for safekeeping
 └── Chapters/
     ├── 0.1: Epigraph                  a Doc per chapter, numbered by part
     ├── 0.2: Prologue
@@ -43,7 +47,7 @@ The book's folder and the Master Manuscript can each be named by the book's titl
 
 The **chapter Docs** are set like a manuscript: Times New Roman 12, double-spaced, a bold centered heading (“Chapter 2: *Low Tide*”), `***` for scene breaks, italics and bold as you wrote them.
 
-The **Master Manuscript** is set the way NEO's own Word export sets a book: a title page, a contents page, a page for each part, and each chapter starting a new page under its heading in capitals, in Georgia at 1.5 lines.
+The **Master Manuscript** is laid out the way NEO's own Word export lays out a book — a title page, a contents page, a page for each part (“PART I:” over its title), each chapter starting a new page — in the chapters' own plain look.
 
 Move a chapter to another part in NEO and its Doc moves folders with it. Move the book's folder anywhere in your Drive and it keeps working.
 
@@ -51,9 +55,17 @@ Move a chapter to another part in NEO and its Doc moves folders with it. Move th
 
 **Editing a chapter Doc.** Your edits come back into NEO within about fifteen seconds while NEO is open, or as soon as you open the book. Suggestions (Suggesting mode) and comments do **not** change your manuscript; only direct edits do. Share chapter Docs with readers as **Commenter**, so their changes can only ever be suggestions.
 
-**The Master Manuscript is a reading copy.** Readers comment on it. If anyone types in it, the edit is undone within seconds, a comment on the Doc quotes what was typed and says where to make the change, and NEO shows it to you.
+**The Master Manuscript is a reading copy.** Readers comment on it. If anyone types in it, the edit is undone within seconds, a comment on the Doc quotes what was typed and says where to make the change, and NEO shows it to you. (Google Docs files a comment made by an app under **All comments** — the speech-bubble button at the top right of the Doc — rather than in the margin.)
 
-**Comments.** Open comments on the chapter Docs and the Master Manuscript appear in NEO's **Notes & Comments** pane (the right edge of the window), with who wrote them, the passage, and replies. **Go to** finds the passage in your manuscript; **Resolve** resolves it in Google Docs too. Comments never touch your text. Choose where they come from in **Google Drive → Show Google Docs Comments in NEO**: chapters and the Master, chapters only (so a reader's notes on the Master stay in Docs), or off.
+**Comments, Chapter Notes, Notepad.** Three quiet words sit at the top right of the manuscript. Click one to open it in the space beside the page; click it again to put it away. One is open at a time.
+
+- **Comments**: open comments from the chapter Docs and the Master Manuscript, in the margin beside the words they're on, which are highlighted. Each shows who wrote it and its replies, with **Resolve** (resolved in Google Docs too); your own also have **Edit**. To make one, select words and right-click → **Add Comment…** (or Ctrl+Alt+M); it goes to the chapter's Google Doc. Comments never touch your text. Choose where they come from in **Google Drive → Show Google Docs Comments in NEO**: chapters and the Master, chapters only, or off.
+- **Chapter Notes**: a note for the chapter you're in; it follows you from chapter to chapter.
+- **Notepad**: the whole book's notes (NEO's Notes page).
+
+The **Notes** tab has the same three at its top: **Notepad** (the Notes page as always), **Comments** (every comment, by chapter, with **Jump to comment**) and **Chapter Notes** (every chapter's note in one place).
+
+The Notepad and Chapter Notes are in the book's **Notes** folder in Drive, and they work both ways: jot an idea into the Notepad Doc on your phone and it's in NEO next time it syncs. If a note changed in both places at once, nothing is lost: what's new in the Doc is added under what's in NEO. The Darlings Doc is a copy of your Darlings tab, kept for safekeeping; change Darlings in NEO.
 
 **Edited in both places at once** (or offline on both sides)? Nothing is thrown away: NEO keeps its version as **version N**, and the Doc's comes in right after it as **version G**. Merge them yourself, then delete the one you don't need.
 

@@ -136,9 +136,17 @@ class FakeGoogle {
       return true;
     })).map((f) => ({ ...f }));
   }
-  async createComment(fileId, content) {
+  async updateComment(fileId, commentId, content) {
     this.check(); this.calls.write++;
-    const c = { id: newId('cm'), content, createdTime: new Date().toISOString(), resolved: false, author: { displayName: 'NEO-Drive', me: true } };
+    const c = (this.comments.get(fileId) || []).find((x) => x.id === commentId);
+    if (!c) { const e = new Error('Comment not found'); e.status = 404; throw e; }
+    if (!c.author.me) { const e = new Error('The user does not have permission to edit this comment.'); e.status = 403; throw e; }
+    c.content = content;
+    return { id: c.id, content };
+  }
+  async createComment(fileId, content, quote) {
+    this.check(); this.calls.write++;
+    const c = { id: newId('cm'), content, createdTime: new Date().toISOString(), resolved: false, author: { displayName: 'Me', me: true }, ...(quote ? { quotedFileContent: { mimeType: 'text/plain', value: quote } } : {}) };
     this.comments.get(fileId).push(c);
     return c;
   }

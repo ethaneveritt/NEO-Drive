@@ -167,6 +167,8 @@
   // the same way an edit from another device arrives, so NEO's own care for
   // a chapter being typed in still applies.
   const DB = window.NeoDriveBlocks;
+  const Panels = window.NeoDrivePanels; // comments beside the page, chapter notes, notepad
+  let lastCommentsError = '';
   const SYNC_EVERY = 5000;
   let drive = { connected: false };
   let syncing = false;
@@ -302,14 +304,17 @@
   async function driveTick(force) {
     if (syncing || !drive.connected || !book || isScript()) return null;
     const bookId = book.id;
-    if (lastBook !== bookId) { lastBook = bookId; lastSig = ''; googleComments = []; }
+    if (lastBook !== bookId) { lastBook = bookId; lastSig = ''; lastCommentsError = ''; }
     const model = bookModel();
-    const sig = JSON.stringify([model.book, model.parts, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, e.label, e.section, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)]), model.master.length]);
+    const notes = Panels ? Panels.notesForModel() : null;
+    if (notes) model.notes = notes;
+    const sig = JSON.stringify([model.book, model.parts, model.notes || null, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, e.label, e.section, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)]), model.master.length]);
     syncing = true;
     try {
       const r = await window.neo.neoDrive({ op: 'sync', model: { ...model, dirty: force || sig !== lastSig, force: !!force } });
       if (!r) return null;
       drive = { ...drive, ...r };
+      if (Panels) Panels.setConnected(drive.connected);
       if (r.error) {
         // said once, not every five seconds
         if (r.error !== 'offline' && r.message !== lastError) toast(t('Google Drive: {msg}', { msg: r.message || r.error }), 8000);
@@ -345,11 +350,10 @@
     for (const c of res.conflicts) await applyConflict(c.chId, c.blocks, c.name);
     if (missed.length) await window.neo.neoDrive({ op: 'forget', uuid, chIds: missed });
     if (res.masterEdits && res.masterEdits.length) showMasterEdits(res.masterEdits);
+    if (Panels && (res.notesPulls || res.notesConflicts)) Panels.applyNotes(res.notesPulls, res.notesConflicts);
     if (res.commentsFetched) {
-      const before = googleComments.length;
-      setGoogleComments(res.comments);
-      // new comments: say so once, quietly, so the pane is worth a look
-      if (res.comments.length > before) toast(t('{n} comments from Google Docs — in Notes & Comments, at the right edge', { n: res.comments.length }), 6000);
+      // shown beside the page (neo-drive/panels.js)
+      if (Panels) Panels.setComments(res.comments);
       if (res.commentsError && res.commentsError !== lastCommentsError) toast(t('Google Docs comments couldn’t be read: {msg}', { msg: res.commentsError }), 10000);
       lastCommentsError = res.commentsError || '';
     }
@@ -432,115 +436,6 @@
     bd.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); bd.remove(); } });
   }
 
-  // ------------------------------------------------- Google Docs comments
-  // Open comments from the Docs, shown under NEO's own notes in the Notes &
-  // Comments pane. They live only here, in memory: nothing is written into
-  // the book. "Go to" finds the passage; "Resolve" resolves it in Docs too.
-  let googleComments = [];
-  let lastCommentsError = '';
-  (function () {
-    const st = document.createElement('style');
-    st.textContent = `
-      .sticky.nd-gc { border-left-color: #5b8fd6; cursor: default; }
-      .nd-gc-head { margin: 4px 12px 8px; font-size: 10px; color: #777; text-transform: uppercase; letter-spacing: 1px; }
-      .nd-gc .nd-q { color: #999; font-style: italic; margin: 4px 0; border-left: 2px solid #444; padding-left: 6px; }
-      .nd-gc .nd-who { color: #bbb; font-weight: 600; }
-      .nd-gc .nd-reply { margin: 4px 0 0 10px; color: #aaa; }
-      .nd-gc .nd-body { margin: 4px 0 6px; white-space: pre-wrap; }`;
-    document.head.appendChild(st);
-  })();
-
-  function drawGoogleComments() {
-    const wrap = document.querySelector('#sticky-list');
-    if (!wrap || !googleComments.length) return;
-    const empty = wrap.querySelector('.stickies-empty');
-    if (empty) empty.remove();
-    const head = document.createElement('div');
-    head.className = 'nd-gc-head';
-    head.textContent = t('From Google Docs');
-    wrap.appendChild(head);
-    for (const c of googleComments) {
-      const el = document.createElement('div');
-      el.className = 'sticky nd-gc';
-      el.dataset.gcid = c.id;
-      el.innerHTML = `
-        <div class="s-ch">${escapeHTML(c.where)}</div>
-        ${c.quote ? `<div class="nd-q">“${escapeHTML(c.quote.length > 160 ? c.quote.slice(0, 160) + '…' : c.quote)}”</div>` : ''}
-        <div class="nd-body"><span class="nd-who">${escapeHTML(c.author)}</span> ${escapeHTML(c.content)}</div>
-        ${c.replies.map((r) => `<div class="nd-reply"><span class="nd-who">${escapeHTML(r.author)}</span> ${escapeHTML(r.content)}</div>`).join('')}
-        <div class="s-actions">${c.quote ? `<button class="s-go">${t('Go to')}</button><span class="s-sep">·</span>` : ''}<button class="s-done">${t('Resolve')}</button></div>`;
-      const go = el.querySelector('.s-go');
-      if (go) go.onclick = () => goToPassage(c);
-      el.querySelector('.s-done').onclick = () => resolveGoogleComment(c, el);
-      wrap.appendChild(el);
-    }
-  }
-  // NEO's pane redraws itself often; ours follows each redraw
-  if (typeof window.renderStickies === 'function') {
-    const own = window.renderStickies;
-    window.renderStickies = function () {
-      own.apply(this, arguments);
-      try { drawGoogleComments(); } catch (err) { window.neo.logError('NEO-Drive comments: ' + err); }
-    };
-  }
-  function setGoogleComments(list) {
-    const before = JSON.stringify(googleComments.map((c) => [c.id, c.content, c.replies.length]));
-    googleComments = list || [];
-    if (JSON.stringify(googleComments.map((c) => [c.id, c.content, c.replies.length])) !== before && book) renderStickies();
-  }
-
-  // The passage a comment is on: in its chapter, or (a Master comment)
-  // anywhere in the book. Selected and brought into view.
-  function goToPassage(c) {
-    const needle = c.quote.replace(/\s+/g, ' ').trim().slice(0, 120);
-    if (!needle) return;
-    if (currentTab !== 'manuscript') switchTab('manuscript');
-    const bodies = [...document.querySelectorAll('.chapter-body')];
-    const order = c.chId ? bodies.sort((a, b) => (b.closest('.chapter').dataset.id === c.chId) - (a.closest('.chapter').dataset.id === c.chId)) : bodies;
-    for (const body of order) {
-      for (const p of body.querySelectorAll('p')) {
-        const text = p.textContent.replace(/\s/g, ' ');
-        const at = text.indexOf(needle);
-        if (at < 0) continue;
-        const range = rangeIn(p, at, at + needle.length);
-        if (!range) continue;
-        body.focus({ preventScroll: true });
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        p.scrollIntoView({ block: 'center' });
-        currentChapterId = body.closest('.chapter').dataset.id;
-        return;
-      }
-    }
-    toast(t('That passage has changed since the comment was made.'));
-  }
-  function rangeIn(p, from, to) {
-    const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
-    let node, pos = 0, start = null;
-    const r = document.createRange();
-    while ((node = walker.nextNode())) {
-      const len = node.data.length;
-      if (!start && from < pos + len) { r.setStart(node, from - pos); start = true; }
-      if (start && to <= pos + len) { r.setEnd(node, to - pos); return r; }
-      pos += len;
-    }
-    return null;
-  }
-
-  async function resolveGoogleComment(c, el) {
-    el.style.opacity = '0.5';
-    const r = await window.neo.neoDrive({ op: 'resolve', docId: c.docId, commentId: c.id });
-    if (r && r.ok) {
-      googleComments = googleComments.filter((x) => x.id !== c.id);
-      renderStickies();
-      toast(t('Resolved — in Google Docs too.'));
-    } else {
-      el.style.opacity = '';
-      toast(t('Couldn’t resolve that comment in Google Docs: {msg}', { msg: (r && (r.message || r.error)) || '' }), 8000);
-    }
-  }
-
   async function openInDrive(what) {
     if (!book) { toast(t('Open a book first.')); return; }
     const r = await window.neo.neoDrive({ op: 'open', what, uuid: book.uuid, chId: currentChapterId || book.chapterOrder[0] });
@@ -551,12 +446,13 @@
     drive = { ...drive, ...msg };
     if (msg.note === 'connected') toast(t('Connected to Google Drive{as}. Open a book and it syncs on its own.', { as: msg.email ? ' — ' + msg.email : '' }), 8000);
     if (msg.note === 'connect-failed') toast(t('Google Drive: {msg}', { msg: msg.message || '' }), 8000);
-    if (msg.note === 'disconnected') setGoogleComments([]);
+    if (Panels) Panels.setConnected(drive.connected);
+    if (msg.note === 'disconnected' && Panels) Panels.setComments([]);
     if (msg.note === 'disconnected') toast(t('Google Drive disconnected. Your Docs stay in your Drive.'), 6000);
   }
 
   if (window.neo.neoDrive && DB) {
-    window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) drive = { ...drive, ...s }; }).catch(() => {});
+    window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) { drive = { ...drive, ...s }; if (Panels) Panels.setConnected(drive.connected); } }).catch(() => {});
     setInterval(() => { driveTick(false).catch(() => {}); }, SYNC_EVERY);
     window.NeoDrive = { tick: driveTick, model: () => bookModel() }; // for tests
   }
@@ -568,6 +464,7 @@
     if (msg.type === 'nd-fixApostrophes') fixApostrophes(msg.x, msg.y);
     if (msg.type === 'nd-status') driveStatus(msg);
     if (msg.type === 'nd-open') openInDrive(msg.what);
+    if (msg.type === 'nd-addComment' && Panels) Panels.startComment();
     if (msg.type === 'nd-syncNow') {
       if (!book) { if (!msg.quiet) toast(t('Open a book to sync it.')); return; }
       driveTick(true).then((r) => { if (r && r.ok && !msg.quiet) toast(t('Synced with Google Drive.')); });
