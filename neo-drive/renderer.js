@@ -464,9 +464,52 @@
   if (window.neo.neoDrive && DB) {
     window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) { drive = { ...drive, ...s }; if (Panels) Panels.setConnected(drive.connected); } }).catch(() => {});
     setInterval(() => { driveTick(false).catch(() => {}); }, SYNC_EVERY);
-    window.neo.neoDrive({ op: 'prefs' }).then((p) => { if (p) document.body.classList.toggle('nd-no-nav-hints', p.navHints === false); }).catch(() => {});
+    window.neo.neoDrive({ op: 'prefs' }).then((p) => { if (p) applyPrefs(p); }).catch(() => {});
     window.NeoDrive = { tick: driveTick, model: () => bookModel() }; // for tests
   }
+
+  // ------------------------------------------------------- spellcheck with
+  // Edit → Spellcheck With → Windows (or macOS) Spellchecker: the computer's
+  // own checker underlines words as Word's does, and its suggestions lead
+  // the right-click menu (neo-drive/main.js). NEO's Spellcheck Pass (⌘/Ctrl+;)
+  // still turns checking on and off; only the dictionary behind it changes.
+  let sysSpell = false;
+  function applyPrefs(p) {
+    if ('navHints' in p) document.body.classList.toggle('nd-no-nav-hints', p.navHints === false);
+    if ('spellEngine' in p) {
+      const was = sysSpell;
+      sysSpell = p.spellEngine === 'system';
+      if (was !== sysSpell) {
+        CSS.highlights.delete('neo-spell');
+        if (typeof spellOn !== 'undefined' && spellOn && !sysSpell) {
+          // back to NEO's dictionary: look again at what's on screen
+          spellScanned = new Set();
+          spellRanges = new Map();
+          scanSpellingHere();
+        }
+        if (typeof spellOn !== 'undefined' && spellOn) toast(sysSpell ? t('Spellcheck: the system spellchecker') : t('Spellcheck: NEO’s dictionary'));
+      }
+      syncSpellAttrs();
+    }
+  }
+  // NEO's own pass stands aside while the system checker is in use
+  for (const name of ['spellScanEl', 'rebuildSpellHighlight']) {
+    const own = window[name];
+    if (typeof own !== 'function') continue;
+    window[name] = function () {
+      if (sysSpell) { CSS.highlights.delete('neo-spell'); return undefined; }
+      return own.apply(this, arguments);
+    };
+  }
+  // the system checker underlines only where spellcheck is on
+  function syncSpellAttrs() {
+    const on = sysSpell && typeof spellOn !== 'undefined' && !!spellOn;
+    for (const el of document.querySelectorAll('#chapters .chapter-body, #aux-editor, #nd-panel .nd-pad, #nd-panel textarea, .nd-list textarea')) {
+      if (el.spellcheck !== on) el.spellcheck = on;
+    }
+  }
+  setInterval(syncSpellAttrs, 500);
+  window.NeoDriveSpell = { get system() { return sysSpell; }, sync: syncSpellAttrs };
 
   // ------------------------------------------------------------ menu bridge
   window.neo.onMenu((msg) => {
@@ -476,7 +519,7 @@
     if (msg.type === 'nd-status') driveStatus(msg);
     if (msg.type === 'nd-open') openInDrive(msg.what);
     if (msg.type === 'nd-addComment' && Panels) Panels.startComment();
-    if (msg.type === 'nd-prefs') document.body.classList.toggle('nd-no-nav-hints', msg.navHints === false);
+    if (msg.type === 'nd-prefs') applyPrefs(msg);
     if (msg.type === 'nd-syncNow') {
       if (!book) { if (!msg.quiet) toast(t('Open a book to sync it.')); return; }
       driveTick(true).then((r) => { if (r && r.ok && !msg.quiet) toast(t('Synced with Google Drive.')); });

@@ -34,3 +34,17 @@ test('no selection: no formatting items', () => {
 test('text that is not editable: menu untouched', () => {
   assert.deepStrictEqual(extendTextMenu(base, { isEditable: false, selectionText: 'x' }, fakeWin()), base);
 });
+
+test('a word the system spellchecker flags: its suggestions first, then Add to the Dictionary', () => {
+  const replaced = [];
+  const added = [];
+  const win = { ...fakeWin(), webContents: { send() {}, replaceMisspelling: (w) => replaced.push(w), session: { addWordToSpellCheckerDictionary: (w) => added.push(w) } } };
+  const items = extendTextMenu(base, { isEditable: true, selectionText: '', misspelledWord: 'teh', dictionarySuggestions: ['the', 'ten', 'tea'] }, win);
+  assert.deepStrictEqual(labels(items).slice(0, 5), ['the', 'ten', 'tea', 'Add “teh” to the Dictionary', 'separator']);
+  items[0].click();
+  items[3].click();
+  assert.deepStrictEqual([replaced, added], [['the'], ['teh']]);
+  const none = extendTextMenu(base, { isEditable: true, selectionText: '', misspelledWord: 'zxqv', dictionarySuggestions: [] }, win);
+  assert.strictEqual(none[0].label, 'No suggestions');
+  assert.strictEqual(none[0].enabled, false);
+});

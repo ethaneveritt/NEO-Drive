@@ -13,6 +13,17 @@ function extendTextMenu(items, params, win) {
   if (!params.isEditable) return items;
   const send = (msg) => { if (win && !win.isDestroyed()) win.webContents.send('menu', msg); };
   const extra = [];
+  // the system spellchecker's word under the pointer: its suggestions first
+  if (params.misspelledWord) {
+    const word = params.misspelledWord;
+    const sugg = (params.dictionarySuggestions || []).slice(0, 6);
+    for (const s of sugg) extra.push({ label: s, click: () => { if (win && !win.isDestroyed()) win.webContents.replaceMisspelling(s); } });
+    if (!sugg.length) extra.push({ label: t('No suggestions'), enabled: false });
+    extra.push(
+      { label: t('Add “{word}” to the Dictionary', { word }), click: () => { try { win.webContents.session.addWordToSpellCheckerDictionary(word); } catch (err) { logError('spell', err); } } },
+      { type: 'separator' }
+    );
+  }
   if (params.selectionText && params.selectionText.trim()) {
     extra.push(
       { label: t('Italic'), accelerator: 'CmdOrCtrl+I', registerAccelerator: false, click: () => send({ type: 'nd-format', cmd: 'italic' }) },
@@ -91,6 +102,29 @@ const COMMENTS_FROM = ['all', 'chapters', 'off'];
 function commentsFrom() { const v = readSettings().commentsFrom; return COMMENTS_FROM.includes(v) ? v : 'all'; }
 // the outline note's "What happens here…" under each chapter in the Chapters pane
 function navHints() { return readSettings().navHints !== false; }
+// Spellcheck With: NEO's own dictionary, or the computer's (Windows' or
+// macOS's own checker, the one Word and Mail use). Linux has no system
+// checker for Electron to use, so it stays with NEO's.
+const SYSTEM_SPELL = process.platform === 'win32' || process.platform === 'darwin' || !!process.env.NEO_DRIVE_SYSTEM_SPELL; // (the env: tests)
+function spellEngine() { return SYSTEM_SPELL && readSettings().spellEngine === 'system' ? 'system' : 'neo'; }
+function applySpellEngine() {
+  try {
+    const { BrowserWindow, session } = require('electron');
+    const on = spellEngine() === 'system';
+    const seen = new Set();
+    for (const s of [session.defaultSession, ...BrowserWindow.getAllWindows().map((w) => w.webContents.session)]) {
+      if (!s || seen.has(s)) continue;
+      seen.add(s);
+      s.setSpellCheckerEnabled(on);
+    }
+  } catch (err) { logError('spell', err); }
+}
+// NEO turns the system checker off as each window opens; once the page has
+// loaded, the choice made here applies
+try {
+  const { app } = require('electron');
+  if (app && app.on) app.on('browser-window-created', (_e, w) => w.webContents.on('did-finish-load', applySpellEngine));
+} catch { /* not running in Electron (unit tests) */ }
 function masterNameBy() { const v = readSettings().masterNameBy; return NAME_BY.includes(v) ? v : nameBy(); }
 
 function status() {
@@ -134,7 +168,7 @@ async function handle(_e, msg) {
   const d = getDrive();
   switch (msg && msg.op) {
     case 'status': return status();
-    case 'prefs': return { navHints: navHints() };
+    case 'prefs': return { navHints: navHints(), spellEngine: spellEngine(), systemSpell: SYSTEM_SPELL };
     case 'connect': return connect();
     case 'disconnect': return disconnect();
     case 'sync': {
@@ -286,6 +320,21 @@ function extendAppMenu(template, rebuild) {
   }
   const menu = { label: t('Google Drive'), submenu: items };
   const out = [...template];
+  // Edit: Spellcheck With (after NEO's own Spellcheck Language)
+  const edit = out.find((m) => m && Array.isArray(m.submenu) && (m.role === 'editMenu' || m.label === t('Edit')));
+  if (edit && SYSTEM_SPELL) {
+    const sys = process.platform === 'darwin' ? t('macOS Spellchecker') : t('Windows Spellchecker');
+    const at = edit.submenu.findIndex((i) => i && i.label === t('Spellcheck Language'));
+    const item = {
+      label: t('Spellcheck With'),
+      submenu: [['neo', t('NEO’s Dictionary')], ['system', sys]].map(([v, l]) => ({
+        label: l, type: 'radio', checked: spellEngine() === v,
+        click: () => { writeSettings({ spellEngine: v }); applySpellEngine(); sendToWindow({ type: 'nd-prefs', spellEngine: v }); }
+      }))
+    };
+    edit.submenu = [...edit.submenu];
+    edit.submenu.splice(at < 0 ? edit.submenu.length : at + 1, 0, item);
+  }
   // View: the Chapters pane's "What happens here…" lines, on or off
   const view = out.find((m) => m && Array.isArray(m.submenu) && (m.role === 'viewMenu' || m.label === t('View')));
   if (view) {
