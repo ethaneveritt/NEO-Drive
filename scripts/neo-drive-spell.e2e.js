@@ -95,7 +95,9 @@ async function main() {
       assert.equal(await js(`CSS.highlights.has('neo-spell')`), false);
     });
     await check('a misspelled word is flagged, with the right suggestion', async () => {
-      await js(`(() => {
+      // the checker looks at words as they're typed and as the caret
+      // passes; a cold Windows spell service can take a while to answer
+      const nudge = () => js(`(() => {
         const body = document.querySelector('.chapter-body');
         body.focus();
         const r = document.createRange(); r.selectNodeContents(body.querySelector('p')); r.collapse(false);
@@ -103,7 +105,12 @@ async function main() {
         document.execCommand('insertText', false, ' ');
       })()`);
       let params = null;
-      for (let i = 0; i < 8 && !(params && params.misspelledWord); i++) { await tick(1000); params = await rightClickWord('teh'); }
+      for (let i = 0; i < 30 && !(params && params.misspelledWord); i++) {
+        win.focus();
+        if (i % 3 === 0) await nudge();
+        await tick(1000);
+        params = await rightClickWord('teh');
+      }
       say('notice', 'context menu: ' + JSON.stringify(params && { word: params.misspelledWord, suggestions: params.dictionarySuggestions }));
       assert.equal(params && params.misspelledWord, 'teh');
       assert.ok(params.dictionarySuggestions.includes('the'), JSON.stringify(params.dictionarySuggestions));
