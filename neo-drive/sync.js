@@ -46,7 +46,6 @@ const REMINDER = 'Reading copy — comments welcome. Edits made here are undone 
 
 const keysOf = (blocks) => blocks.map(B.blockKey);
 const sameBlocks = (a, b) => a.length === b.length && keysOf(a).every((k, i) => k === B.blockKey(b[i]));
-const pad = (n) => String(n).padStart(2, '0');
 const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
 class Sync {
