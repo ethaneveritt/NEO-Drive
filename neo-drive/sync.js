@@ -34,6 +34,7 @@ const B = require('./blocks.js');
 const FOLDER = 'application/vnd.google-apps.folder';
 const DOC = 'application/vnd.google-apps.document';
 const POLL_MS = 15000;      // how often to look for edits made in Docs, when nothing changed here
+const COMMENTS_MS = 60000;  // how often to look for new comments
 const MAX_COMMENTS = 5;     // per sync, for edits undone in the Master Doc
 // bumped when the Master's look changes: an older Master is set again, whole
 const MASTER_STYLE = 3;
@@ -108,7 +109,8 @@ class Sync {
     const t0 = this.now();
     const poll = model.force || !st.polledAt || t0 - st.polledAt >= POLL_MS;
     const localDirty = model.dirty !== false;
-    if (!poll && !localDirty && st.folderId) return out;
+    const commentsDue = !st.commentsAt || t0 - st.commentsAt >= COMMENTS_MS || st.commentsFrom !== (book.commentsFrom || 'all');
+    if (!poll && !localDirty && !commentsDue && st.folderId) return out;
 
     await this.ensureFolder(st, book);
     // every file of this book, wherever it sits in Drive, with versions: one
@@ -229,6 +231,9 @@ class Sync {
     } catch (err) {
       if (!err.stale) throw err;
     }
+
+    // ---- comments, for NEO's Notes & Comments pane
+    await this.readComments(st, model, out, t0);
     this.save(book.uuid, st);
     return out;
   }
@@ -268,6 +273,37 @@ class Sync {
       out.pushed++;
     }
     c.version = (await this.api.getFile(c.docId)).version;
+  }
+
+  // The open comments on the chapter Docs (and the Master, unless the
+  // writer turned that off), about once a minute. NEO-Drive's own notes
+  // are left out. out.comments replaces what the window showed.
+  async readComments(st, model, out, now) {
+    const from = model.book.commentsFrom || 'all';
+    if (from === 'off') { out.comments = []; out.commentsFetched = true; return; }
+    if (!model.force && st.commentsAt && now - st.commentsAt < COMMENTS_MS && st.commentsFrom === from) return;
+    const docs = [];
+    for (const e of model.entries) if (st.chapters[e.chId]) docs.push({ docId: st.chapters[e.chId].docId, chId: e.chId, where: e.name });
+    if (from === 'all' && st.masterId) docs.push({ docId: st.masterId, chId: null, where: 'Master Manuscript' });
+    const all = [];
+    for (const d of docs) {
+      let list;
+      try { list = await this.api.listComments(d.docId); } catch (err) { if (err.offline) throw err; this.log('comments', err); continue; }
+      for (const c of list) {
+        if (c.deleted || c.resolved || ours(c)) continue;
+        all.push({
+          id: c.id, docId: d.docId, chId: d.chId, where: d.where,
+          author: (c.author && c.author.displayName) || '', content: c.content || '',
+          quote: (c.quotedFileContent && c.quotedFileContent.value) || '',
+          created: c.createdTime || '',
+          replies: (c.replies || []).filter((r) => !r.deleted && r.content).map((r) => ({ author: (r.author && r.author.displayName) || '', content: r.content }))
+        });
+      }
+    }
+    out.comments = all;
+    out.commentsFetched = true;
+    st.commentsAt = now;
+    st.commentsFrom = from;
   }
 
   // A folder of ours: the one we know if it's still there, else one tagged
@@ -479,6 +515,12 @@ function bookName(book, by = book.nameBy) {
   if (by === 'subtitle') return sub;
   if (by === 'both') return `${title}: ${sub}`;
   return title;
+}
+
+// NEO-Drive's own comments (the reading-copy note, edits undone)
+function ours(c) {
+  const t = String(c.content || '');
+  return t === REMINDER || t.startsWith('Edit undone —');
 }
 
 // The folder deleted chapters go to.

@@ -382,3 +382,39 @@ test('an old "Deleted chapters" folder inside Chapters is renamed and moved besi
   await t.sync();
   assert.deepStrictEqual(t.g.files.get(deleted.id).parents, [chapters.id]);
 });
+
+test('open comments come back for the pane; NEO-Drive\'s own notes and resolved ones do not', async () => {
+  const t = setup();
+  await t.sync();
+  const c1 = t.chapterDoc('c1').id, m = t.master().id;
+  t.g.addReaderComment(c1, { content: 'Love this line.', quote: 'It rained on the harbor.', author: 'Faye', replies: [{ content: 'Thanks!', author: 'Ethan' }] });
+  t.g.addReaderComment(m, { content: 'Typo?', quote: 'counted coins', author: 'Sam' });
+  const done = t.g.addReaderComment(c1, { content: 'Old note', author: 'Sam' });
+  done.resolved = true;
+  const r = await t.sync({ force: true });
+  assert.ok(r.commentsFetched);
+  assert.deepStrictEqual(r.comments.map((c) => [c.where, c.author, c.content, c.quote]), [
+    ['Chapter 1 — Cold Front', 'Faye', 'Love this line.', 'It rained on the harbor.'],
+    ['Master Manuscript', 'Sam', 'Typo?', 'counted coins']
+  ]);
+  assert.deepStrictEqual(r.comments[0].replies, [{ author: 'Ethan', content: 'Thanks!' }]);
+  // chapters only: the Master's are left out
+  t.book.commentsFrom = 'chapters';
+  const r2 = await t.sync({ force: true });
+  assert.deepStrictEqual(r2.comments.map((c) => c.content), ['Love this line.']);
+  // off: none
+  t.book.commentsFrom = 'off';
+  const r3 = await t.sync({ force: true });
+  assert.deepStrictEqual(r3.comments, []);
+});
+
+test('resolving from NEO resolves the comment in Docs', async () => {
+  const t = setup();
+  await t.sync();
+  const id = t.chapterDoc('c1').id;
+  const c = t.g.addReaderComment(id, { content: 'Fix this.', quote: 'harbor' });
+  await t.g.resolveComment(id, c.id);
+  const r = await t.sync({ force: true });
+  assert.deepStrictEqual(r.comments, []);
+  assert.strictEqual(c.resolved, true);
+});

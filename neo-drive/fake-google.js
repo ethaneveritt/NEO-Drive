@@ -142,6 +142,25 @@ class FakeGoogle {
     this.comments.get(fileId).push(c);
     return c;
   }
+  async resolveComment(fileId, commentId) {
+    this.check(); this.calls.write++;
+    const c = (this.comments.get(fileId) || []).find((x) => x.id === commentId);
+    if (!c) { const e = new Error('Comment not found'); e.status = 404; throw e; }
+    c.resolved = true;
+    (c.replies = c.replies || []).push({ id: newId('rp'), content: 'Resolved in NEO.', action: 'resolve', author: { displayName: 'NEO-Drive', me: true } });
+    return { id: c.replies[c.replies.length - 1].id };
+  }
+  // tests: a reader's comment on a passage
+  addReaderComment(fileId, { content, quote = '', author = 'A Reader', replies = [] }) {
+    const c = {
+      id: newId('cm'), content, createdTime: new Date().toISOString(), resolved: false, deleted: false,
+      author: { displayName: author, me: false },
+      ...(quote ? { quotedFileContent: { mimeType: 'text/html', value: quote } } : {}),
+      replies: replies.map((r) => ({ id: newId('rp'), content: r.content, author: { displayName: r.author || 'A Reader', me: false } }))
+    };
+    this.comments.get(fileId).push(c);
+    return c;
+  }
   async listComments(fileId) { this.check(); this.calls.read++; return [...(this.comments.get(fileId) || [])]; }
 
   // ---- Docs

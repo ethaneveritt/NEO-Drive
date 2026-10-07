@@ -84,6 +84,9 @@ function writeSettings(obj) {
 const NAME_BY = ['title', 'subtitle', 'both'];
 function nameBy() { const v = readSettings().nameBy; return NAME_BY.includes(v) ? v : 'title'; }
 // the Master Manuscript's name has its own choice (until one is made, the folder's)
+// Google Docs comments shown in NEO: 'all' (chapters and the Master), 'chapters', or 'off'
+const COMMENTS_FROM = ['all', 'chapters', 'off'];
+function commentsFrom() { const v = readSettings().commentsFrom; return COMMENTS_FROM.includes(v) ? v : 'all'; }
 function masterNameBy() { const v = readSettings().masterNameBy; return NAME_BY.includes(v) ? v : nameBy(); }
 
 function status() {
@@ -132,7 +135,7 @@ async function handle(_e, msg) {
     case 'sync': {
       if (!d.api.connected) return { error: 'not-connected', ...status() };
       try {
-        const model = { ...msg.model, book: { ...msg.model.book, nameBy: nameBy(), masterNameBy: masterNameBy() } };
+        const model = { ...msg.model, book: { ...msg.model.book, nameBy: nameBy(), masterNameBy: masterNameBy(), commentsFrom: commentsFrom() } };
         const result = await d.sync.run(model);
         d.lastSync = Date.now();
         if (d.error) { d.error = ''; rebuildMenu(); }
@@ -155,6 +158,16 @@ async function handle(_e, msg) {
       if (!d.fake) require('electron').shell.openExternal(url);
       return { ok: true, url };
     }
+    case 'resolve': {
+      // a Google Docs comment resolved from NEO's pane
+      if (!d.api.connected) return { error: 'not-connected' };
+      try {
+        await d.api.resolveComment(String(msg.docId), String(msg.commentId));
+        return { ok: true };
+      } catch (err) {
+        return { error: err.offline ? 'offline' : 'failed', message: String((err && err.message) || err) };
+      }
+    }
     case 'forget': {
       // the window couldn't take in what Docs sent: the next sync treats
       // those chapters as changed on both sides, so both versions are kept
@@ -173,6 +186,7 @@ async function fakeOp(g, msg) {
   if (msg.do === 'doc') return g.getDoc(msg.id);
   if (msg.do === 'type') { await g.typeInDoc(msg.id, g.findText(msg.id, msg.before), msg.text); return true; }
   if (msg.do === 'comments') return g.listComments(msg.id);
+  if (msg.do === 'readerComment') return g.addReaderComment(msg.id, msg.comment);
   return null;
 }
 
@@ -209,6 +223,18 @@ function extendAppMenu(template, rebuild) {
       { label: t('Open This Book in Google Drive'), click: () => sendToWindow({ type: 'nd-open', what: 'folder' }) },
       { label: t('Open the Master Manuscript'), click: () => sendToWindow({ type: 'nd-open', what: 'master' }) },
       { label: t('Open This Chapter’s Google Doc'), click: () => sendToWindow({ type: 'nd-open', what: 'chapter' }) },
+      { type: 'separator' },
+      {
+        label: t('Show Google Docs Comments in NEO'),
+        submenu: [
+          ['all', t('From Chapters and the Master Manuscript')],
+          ['chapters', t('From Chapters Only')],
+          ['off', t('Off')]
+        ].map(([v, l]) => ({
+          label: l, type: 'radio', checked: commentsFrom() === v,
+          click: () => { writeSettings({ commentsFrom: v }); rebuildMenu(); sendToWindow({ type: 'nd-syncNow', quiet: true }); }
+        }))
+      },
       { type: 'separator' },
       namingMenu(t('Name Book Folders By'), 'nameBy', nameBy()),
       namingMenu(t('Name the Master Manuscript By'), 'masterNameBy', masterNameBy()),

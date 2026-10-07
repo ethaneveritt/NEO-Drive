@@ -53,6 +53,8 @@ Move a chapter to another part in NEO and its Doc moves folders with it. Move th
 
 **The Master Manuscript is a reading copy.** Readers comment on it. If anyone types in it, the edit is undone within seconds, a comment on the Doc quotes what was typed and says where to make the change, and NEO shows it to you.
 
+**Comments.** Open comments on the chapter Docs and the Master Manuscript appear in NEO's **Notes & Comments** pane (the right edge of the window), with who wrote them, the passage, and replies. **Go to** finds the passage in your manuscript; **Resolve** resolves it in Google Docs too. Comments never touch your text. Choose where they come from in **Google Drive → Show Google Docs Comments in NEO**: chapters and the Master, chapters only (so a reader's notes on the Master stay in Docs), or off.
+
 **Edited in both places at once** (or offline on both sides)? Nothing is thrown away: NEO keeps its version as **version N**, and the Doc's comes in right after it as **version G**. Merge them yourself, then delete the one you don't need.
 
 **Things to know**
