@@ -136,6 +136,9 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --no-audit --no-fund
+      # Edit → Spellcheck With → Windows Spellchecker, on a real Windows machine
+      - name: Test the Windows spellchecker
+        run: npx electron scripts/neo-drive-spell.e2e.js
       # The app's Google sign-in (Settings → Secrets and variables → Actions).
       # Without the secrets the build still works; its Google Drive menu says
       # no sign-in is configured.
