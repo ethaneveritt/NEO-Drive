@@ -287,7 +287,12 @@ class Sync {
     const all = [];
     for (const d of docs) {
       let list;
-      try { list = await this.api.listComments(d.docId); } catch (err) { if (err.offline) throw err; this.log('comments', err); continue; }
+      try { list = await this.api.listComments(d.docId); } catch (err) {
+        if (err.offline) throw err;
+        this.log('comments', err);
+        out.commentsError = String((err && err.message) || err); // said in the window, once
+        continue;
+      }
       for (const c of list) {
         if (c.deleted || c.resolved || ours(c)) continue;
         all.push({

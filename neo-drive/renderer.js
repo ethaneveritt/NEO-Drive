@@ -345,7 +345,14 @@
     for (const c of res.conflicts) await applyConflict(c.chId, c.blocks, c.name);
     if (missed.length) await window.neo.neoDrive({ op: 'forget', uuid, chIds: missed });
     if (res.masterEdits && res.masterEdits.length) showMasterEdits(res.masterEdits);
-    if (res.commentsFetched) setGoogleComments(res.comments);
+    if (res.commentsFetched) {
+      const before = googleComments.length;
+      setGoogleComments(res.comments);
+      // new comments: say so once, quietly, so the pane is worth a look
+      if (res.comments.length > before) toast(t('{n} comments from Google Docs — in Notes & Comments, at the right edge', { n: res.comments.length }), 6000);
+      if (res.commentsError && res.commentsError !== lastCommentsError) toast(t('Google Docs comments couldn’t be read: {msg}', { msg: res.commentsError }), 10000);
+      lastCommentsError = res.commentsError || '';
+    }
   }
 
   // The Doc's text, merged into the chapter as it stands on disk: only the
@@ -430,6 +437,7 @@
   // Comments pane. They live only here, in memory: nothing is written into
   // the book. "Go to" finds the passage; "Resolve" resolves it in Docs too.
   let googleComments = [];
+  let lastCommentsError = '';
   (function () {
     const st = document.createElement('style');
     st.textContent = `

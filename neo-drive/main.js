@@ -138,6 +138,10 @@ async function handle(_e, msg) {
         const model = { ...msg.model, book: { ...msg.model.book, nameBy: nameBy(), masterNameBy: masterNameBy(), commentsFrom: commentsFrom() } };
         const result = await d.sync.run(model);
         d.lastSync = Date.now();
+        if (result.commentsFetched) {
+          const n = result.comments.length;
+          if (n !== d.commentCount || result.commentsError !== d.commentsError) { d.commentCount = n; d.commentsError = result.commentsError || ''; rebuildMenu(); }
+        }
         if (d.error) { d.error = ''; rebuildMenu(); }
         return { ok: true, result, ...status() };
       } catch (err) {
@@ -216,6 +220,14 @@ function extendAppMenu(template, rebuild) {
   } else if (st.connected) {
     items.push({ label: st.email ? t('Connected as {email}', { email: st.email }) : t('Connected'), enabled: false });
     if (st.error) items.push({ label: st.error, enabled: false });
+    const dd = getDrive();
+    if (dd.lastSync) {
+      const when = new Date(dd.lastSync).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      items.push({ label: t('Last synced {time}', { time: when }), enabled: false });
+    }
+    if (commentsFrom() !== 'off' && dd.commentCount !== undefined) {
+      items.push({ label: dd.commentsError ? t('Comments: couldn’t be read ({msg})', { msg: dd.commentsError.slice(0, 80) }) : t('{n} open comments — in Notes & Comments (right edge)', { n: dd.commentCount }), enabled: false });
+    }
     items.push(
       { type: 'separator' },
       { label: t('Sync Now'), click: () => sendToWindow({ type: 'nd-syncNow' }) },
