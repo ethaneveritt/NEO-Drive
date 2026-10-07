@@ -25,7 +25,7 @@ require('../main.js');
 
 let wc;
 const js = (code) => wc.executeJavaScript(code, true);
-const tick = (ms = 40) => new Promise((r) => setTimeout(r, ms));
+const tick = (ms = 40) => new Promise((resolve) => setTimeout(resolve, ms));
 const menu = (msg) => wc.send('menu', msg);
 
 const WRONG = "‘Til dawn, Mara said, ‘we keep the ‘90s rule: don't wake ‘em.’";

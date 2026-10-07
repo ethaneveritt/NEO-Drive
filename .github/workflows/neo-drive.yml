@@ -96,6 +96,7 @@ jobs:
           npm ci --no-audit --no-fund
           node --test scripts/neo-drive-*.test.js
           xvfb-run -a npx electron --no-sandbox scripts/neo-drive.e2e.js
+          xvfb-run -a npx electron --no-sandbox scripts/neo-drive-sync.e2e.js
 
       - name: Push the merge
         run: git push origin HEAD:main
@@ -135,6 +136,17 @@ jobs:
         with:
           node-version: 22
       - run: npm ci --no-audit --no-fund
+      # The app's Google sign-in (Settings → Secrets and variables → Actions).
+      # Without the secrets the build still works; its Google Drive menu says
+      # no sign-in is configured.
+      - name: Google sign-in for this build
+        shell: bash
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          node -e "require('fs').writeFileSync('neo-drive/google-client.json', JSON.stringify({ client_id: process.env.GOOGLE_CLIENT_ID || '', client_secret: process.env.GOOGLE_CLIENT_SECRET || '' }))"
+          if [ -z "$GOOGLE_CLIENT_ID" ]; then echo "::warning::No GOOGLE_CLIENT_ID secret: this build can't connect to Google Drive."; fi
       # The updater in the installed app reads its source from this build's
       # publish settings (app-update.yml inside the app): this repo, not Hugh's.
       - name: Build the installer

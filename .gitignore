@@ -29,3 +29,6 @@ pocket/www/dict/
 # working files beside the repo, never part of it
 Claude outputs/
 docs/sessions/
+
+# NEO-Drive: the Google client, written into release builds from repo secrets
+neo-drive/google-client.json

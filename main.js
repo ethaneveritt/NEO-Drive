@@ -2178,7 +2178,7 @@ function buildMenu() {
       ]
     }
   ];
-  const menu = Menu.buildFromTemplate(template);
+  const menu = Menu.buildFromTemplate(neoDrive.extendAppMenu(template, buildMenu)); // NEO-Drive hook
   editMenuState.edit = null; // the old menu bar is going: forget its Edit menu first
   Menu.setApplicationMenu(menu);
   if (isMac) {

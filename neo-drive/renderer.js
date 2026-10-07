@@ -160,10 +160,219 @@
     }
   }
 
+  // ----------------------------------------------------------- Google Drive
+  // The open book goes to Google Drive every few seconds (neo-drive/sync.js
+  // does the work in the main process). What comes back from Docs is written
+  // through NEO's own door (window.neo.writeChapter, then refreshFromDisk),
+  // the same way an edit from another device arrives, so NEO's own care for
+  // a chapter being typed in still applies.
+  const DB = window.NeoDriveBlocks;
+  const SYNC_EVERY = 5000;
+  let drive = { connected: false };
+  let syncing = false;
+  let lastSig = '';
+  let lastBook = null;
+  let lastError = '';
+  const paraCache = new Map(); // chapter html -> its blocks
+
+  // A chapter's paragraphs, each with the element it came from. NEO's own
+  // export reading (parasFromHtml) decides what a paragraph is; an outline's
+  // unwritten sections (ghosts) and their breaks are not part of the book.
+  function neoParas(html) {
+    const holder = document.createElement('div');
+    holder.innerHTML = html || '';
+    const skip = new Set();
+    holder.querySelectorAll('p.ghost').forEach((g) => {
+      skip.add(g);
+      const id = g.dataset.secId;
+      if (id) holder.querySelectorAll('p.scene-break').forEach((b) => { if (b.dataset.secBrk === id) skip.add(b); });
+    });
+    const list = [];
+    for (const p of holder.querySelectorAll('p')) {
+      if (skip.has(p)) continue;
+      const paras = parasFromHtml(p.outerHTML);
+      if (paras.length) list.push({ el: p, block: DB.fromNeoPara(paras[0]) });
+    }
+    return { holder, list };
+  }
+  function blocksOf(html) {
+    let b = paraCache.get(html);
+    if (!b) {
+      b = neoParas(html).list.map((x) => x.block);
+      if (paraCache.size > 400) paraCache.clear();
+      paraCache.set(html, b);
+    }
+    return b;
+  }
+  function liveHtml(chId) {
+    const el = document.querySelector(`.chapter[data-id="${CSS.escape(chId)}"] .chapter-body`);
+    return el ? captureBody(el) : (chapterHTML[chId] || '');
+  }
+
+  function bookModel() {
+    if (!book.uuid) { book.uuid = crypto.randomUUID(); saveMeta(); }
+    const solo = soloStory();
+    const entries = [];
+    for (const chId of book.chapterOrder) {
+      const kind = chapterKind(chId);
+      if (kind === 'contents') continue;
+      const name = chapterHeading(chId) || chapterName(chId);
+      entries.push({ chId, kind, heading: chId === solo ? '' : chapterHeading(chId), name, blocks: blocksOf(liveHtml(chId)) });
+    }
+    return { book: { uuid: book.uuid, title: book.title || '', subtitle: book.subtitle || '', author: book.author || '' }, entries };
+  }
+
+  async function driveTick(force) {
+    if (syncing || !drive.connected || !book || isScript()) return null;
+    const bookId = book.id;
+    if (lastBook !== bookId) { lastBook = bookId; lastSig = ''; }
+    const model = bookModel();
+    const sig = JSON.stringify([model.book, model.entries.map((e) => [e.chId, e.kind, e.heading, e.name, e.blocks.map(DB.blockKey)])]);
+    syncing = true;
+    try {
+      const r = await window.neo.neoDrive({ op: 'sync', model: { ...model, dirty: force || sig !== lastSig, force: !!force } });
+      if (!r) return null;
+      drive = { ...drive, ...r };
+      if (r.error) {
+        // said once, not every five seconds
+        if (r.error !== 'offline' && r.message !== lastError) toast(t('Google Drive: {msg}', { msg: r.message || r.error }), 8000);
+        lastError = r.message || r.error;
+        return r;
+      }
+      if (lastError) { lastError = ''; }
+      if (!book || book.id !== bookId) {
+        // the book closed mid-sync: anything Docs sent is looked at afresh next time
+        const back = [...r.result.pulls, ...r.result.conflicts].map((x) => x.chId);
+        if (back.length) await window.neo.neoDrive({ op: 'forget', uuid: model.book.uuid, chIds: back });
+        return r;
+      }
+      lastSig = sig;
+      await applyFromDrive(model.book.uuid, r.result);
+      return r;
+    } finally {
+      syncing = false;
+    }
+  }
+
+  async function applyFromDrive(uuid, res) {
+    const names = [];
+    const missed = [];
+    for (const pull of res.pulls) {
+      if (await applyPull(pull.chId, pull.blocks)) names.push(chapterHeading(pull.chId) || chapterName(pull.chId));
+      else missed.push(pull.chId);
+    }
+    if (names.length) {
+      await refreshFromDisk();
+      toast(t('Updated from Google Docs: {names}', { names: names.join(', ') }), 6000);
+    }
+    for (const c of res.conflicts) await applyConflict(c.chId, c.blocks, c.name);
+    if (missed.length) await window.neo.neoDrive({ op: 'forget', uuid, chIds: missed });
+    if (res.masterEdits && res.masterEdits.length) showMasterEdits(res.masterEdits);
+  }
+
+  // The Doc's text, merged into the chapter as it stands on disk: only the
+  // paragraphs that changed are replaced, so an outline section's mark (and
+  // everything else NEO keeps in the file) stays on the paragraphs Docs
+  // didn't touch.
+  async function applyPull(chId, blocks) {
+    if (!book.chapterOrder.includes(chId)) return false;
+    const html = savedHTML[chId] !== undefined ? savedHTML[chId] : chapterHTML[chId];
+    if (html === undefined) return false;
+    const { holder, list } = neoParas(html);
+    const want = blocks.map(DB.normalize);
+    const hunks = DB.diffBlocks(list.map((x) => x.block), want);
+    for (let h = hunks.length - 1; h >= 0; h--) {
+      const { i0, i1, j0, j1 } = hunks[h];
+      const olds = list.slice(i0, i1).map((x) => x.el);
+      const tmp = document.createElement('div');
+      tmp.innerHTML = want.slice(j0, j1).map(DB.toNeoHtml).join('');
+      const news = [...tmp.children];
+      if (olds[0] && news[0] && olds[0].dataset.secId) news[0].dataset.secId = olds[0].dataset.secId;
+      if (i0 < list.length) for (const n of news) list[i0].el.before(n);
+      else if (list.length) { let at = list[list.length - 1].el; for (const n of news) { at.after(n); at = n; } }
+      else for (const n of news) holder.appendChild(n);
+      for (const o of olds) o.remove();
+    }
+    const out = holder.innerHTML || '<p><br></p>';
+    if (out === html) return true;
+    const r = await window.neo.writeChapter(book.id, chId, out, diskKnown[book.id + '/' + chId]);
+    return !(r && typeof r.conflict === 'string');
+  }
+
+  // Edited in NEO and in Docs at once: both stay. NEO's is version N; the
+  // Doc's comes in right after it as version G (NEO's own way of keeping
+  // another device's copy, titled for where it came from).
+  async function applyConflict(chId, blocks, name) {
+    if (!book.chapterOrder.includes(chId)) return;
+    const html = blocks.map(DB.toNeoHtml).join('') || '<p><br></p>';
+    const titles = book.chapterTitles = book.chapterTitles || {};
+    const was = (titles[chId] || '').trim();
+    const when = new Date().toLocaleTimeString(NeoI18n.getLocale(), { hour: 'numeric', minute: '2-digit' });
+    const g = (was || name) + ' ' + t('(version G — Google Docs, {time})', { time: when });
+    if (!/\(version N\)$/.test(was)) titles[chId] = (was ? was + ' ' : '') + t('(version N)');
+    const keep = window.twinChapterTitle;
+    window.twinChapterTitle = () => g;
+    try {
+      await keepOtherDeviceVersion(book.id, chId, html);
+    } finally {
+      window.twinChapterTitle = keep;
+    }
+    toast(t('“{name}” changed here and in Google Docs. Both are kept: version N is yours from NEO, version G (right after it) is from Docs.', { name }), 12000);
+  }
+
+  // Someone typed in the Master Manuscript; it was put back. Show what they
+  // typed, so it can be made here.
+  function showMasterEdits(edits) {
+    if (document.querySelector('.nd-master')) return;
+    const bd = document.createElement('div');
+    bd.className = 'modal-backdrop';
+    const rows = edits.slice(0, 10).map((e) => `
+      <div style="margin:0 0 12px">
+        ${e.name ? `<div style="opacity:.6;font-size:12px;margin-bottom:2px">${escapeHTML(e.name)}</div>` : ''}
+        <div style="opacity:.7;text-decoration:line-through">${escapeHTML(e.before || t('(nothing)'))}</div>
+        <div>${escapeHTML(e.after || t('(deleted)'))}</div>
+      </div>`).join('');
+    bd.innerHTML = `
+      <div class="modal nd-master" style="width:520px;max-height:80vh;overflow:auto">
+        <h2 style="font-size:16px">${t('Edits in the Master Manuscript were undone')}</h2>
+        <p>${t('The Master Manuscript is a reading copy. Make these changes here in NEO (or in the chapter’s own Doc):')}</p>
+        ${rows}
+        <div style="text-align:right;margin-top:14px"><button class="m-ok btn-gold">${t('OK')}</button></div>
+      </div>`;
+    document.body.appendChild(bd);
+    bd.querySelector('.m-ok').onclick = () => bd.remove();
+    bd.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); bd.remove(); } });
+  }
+
+  async function openInDrive(what) {
+    if (!book) { toast(t('Open a book first.')); return; }
+    const r = await window.neo.neoDrive({ op: 'open', what, uuid: book.uuid, chId: currentChapterId || book.chapterOrder[0] });
+    if (r && r.error) toast(t('This book hasn’t been synced to Google Drive yet.'));
+  }
+
+  function driveStatus(msg) {
+    drive = { ...drive, ...msg };
+    if (msg.note === 'connected') toast(t('Connected to Google Drive{as}. Open a book and it syncs on its own.', { as: msg.email ? ' — ' + msg.email : '' }), 8000);
+    if (msg.note === 'connect-failed') toast(t('Google Drive: {msg}', { msg: msg.message || '' }), 8000);
+    if (msg.note === 'disconnected') toast(t('Google Drive disconnected. Your Docs stay in your Drive.'), 6000);
+  }
+
+  if (window.neo.neoDrive && DB) {
+    window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) drive = { ...drive, ...s }; }).catch(() => {});
+    setInterval(() => { driveTick(false).catch(() => {}); }, SYNC_EVERY);
+    window.NeoDrive = { tick: driveTick, model: () => bookModel() }; // for tests
+  }
+
   // ------------------------------------------------------------ menu bridge
   window.neo.onMenu((msg) => {
     if (!msg || typeof msg.type !== 'string' || !msg.type.startsWith('nd-')) return;
     if (msg.type === 'nd-format' && ['italic', 'bold', 'underline'].includes(msg.cmd)) applyFormat(msg.cmd);
     if (msg.type === 'nd-fixApostrophes') fixApostrophes(msg.x, msg.y);
+    if (msg.type === 'nd-status') driveStatus(msg);
+    if (msg.type === 'nd-open') openInDrive(msg.what);
+    if (msg.type === 'nd-syncNow') {
+      if (!book) { toast(t('Open a book to sync it.')); return; }
+      driveTick(true).then((r) => { if (r && r.ok) toast(t('Synced with Google Drive.')); });
+    }
   });
 })();

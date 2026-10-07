@@ -3,8 +3,10 @@
 // so Hugh's updates to main.js merge cleanly.
 'use strict';
 
+const path = require('path');
 const { t } = require('../i18n.js');
 
+// ------------------------------------------------------------- right-click
 // Extra items for the right-click menu on text (see the 'context-menu'
 // handler in main.js). `items` is the template Hugh's handler built.
 function extendTextMenu(items, params, win) {
@@ -32,4 +34,164 @@ function extendTextMenu(items, params, win) {
 const RELEASES_REPO = 'ethaneveritt/NEO-Drive';
 const LATEST_RELEASE_API = `https://api.github.com/repos/${RELEASES_REPO}/releases/latest`;
 
-module.exports = { extendTextMenu, LATEST_RELEASE_API };
+// ------------------------------------------------------------ Google Drive
+let drive = null; // { google, sync, fake }
+let rebuildMenu = () => {};
+
+function sendToWindow(msg) {
+  const { BrowserWindow } = require('electron');
+  const w = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  if (w && !w.isDestroyed()) w.webContents.send('menu', msg);
+}
+
+function logError(where, err) {
+  try { console.error('[NEO-Drive]', where, (err && err.stack) || err); } catch { /* nowhere to say it */ }
+}
+
+function getDrive() {
+  if (drive) return drive;
+  const { app, safeStorage, shell } = require('electron');
+  const { Google } = require('./google.js');
+  const { Sync } = require('./sync.js');
+  const dir = path.join(app.getPath('userData'), 'neo-drive');
+  let api;
+  let fake = null;
+  if (process.env.NEO_DRIVE_FAKE) {
+    // tests: Google in memory, already signed in
+    const { FakeGoogle } = require('./fake-google.js');
+    fake = new FakeGoogle();
+    api = fake;
+    api.connected = true;
+    api.email = 'test@example.com';
+    api.available = true;
+  } else {
+    api = new Google({ dir, safeStorage, openExternal: (u) => shell.openExternal(u), log: logError });
+  }
+  drive = { api, fake, sync: new Sync({ api, dir, log: logError }), lastSync: 0, error: '' };
+  return drive;
+}
+
+function status() {
+  const d = getDrive();
+  return {
+    available: !!d.api.available,
+    connected: !!d.api.connected,
+    email: d.api.email || '',
+    lastSync: d.lastSync,
+    error: d.error
+  };
+}
+
+async function connect() {
+  const d = getDrive();
+  if (d.fake) return status();
+  try {
+    await d.api.connect();
+    d.error = '';
+    sendToWindow({ type: 'nd-status', ...status(), note: 'connected' });
+  } catch (err) {
+    sendToWindow({ type: 'nd-status', ...status(), note: 'connect-failed', message: String(err.message || err) });
+  }
+  rebuildMenu();
+  return status();
+}
+
+function disconnect() {
+  const d = getDrive();
+  if (!d.fake) d.api.disconnect();
+  sendToWindow({ type: 'nd-status', ...status(), note: 'disconnected' });
+  rebuildMenu();
+  return status();
+}
+
+const docUrl = (id) => `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
+const folderUrl = (id) => `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
+
+// The window's one door in: window.neo.neoDrive(msg) (preload.js hook)
+async function handle(_e, msg) {
+  const d = getDrive();
+  switch (msg && msg.op) {
+    case 'status': return status();
+    case 'connect': return connect();
+    case 'disconnect': return disconnect();
+    case 'sync': {
+      if (!d.api.connected) return { error: 'not-connected', ...status() };
+      try {
+        const result = await d.sync.run(msg.model);
+        d.lastSync = Date.now();
+        if (d.error) { d.error = ''; rebuildMenu(); }
+        return { ok: true, result, ...status() };
+      } catch (err) {
+        const message = String((err && err.message) || err);
+        if (err && err.signedOut) { d.error = message; rebuildMenu(); return { error: 'signed-out', message, ...status() }; }
+        if (err && err.offline) return { error: 'offline', message, ...status() };
+        logError('sync', err);
+        d.error = message;
+        return { error: 'failed', message, ...status() };
+      }
+    }
+    case 'open': {
+      // what: 'folder' | 'master' | 'chapter'
+      const links = d.sync.links(String(msg.uuid || ''));
+      const id = msg.what === 'folder' ? links.folderId : msg.what === 'master' ? links.masterId : links.chapters[msg.chId];
+      if (!id) return { error: 'not-synced' };
+      const url = msg.what === 'folder' ? folderUrl(id) : docUrl(id);
+      if (!d.fake) require('electron').shell.openExternal(url);
+      return { ok: true, url };
+    }
+    case 'forget': {
+      // the window couldn't take in what Docs sent: the next sync treats
+      // those chapters as changed on both sides, so both versions are kept
+      d.sync.forgetChapters(String(msg.uuid || ''), msg.chIds || []);
+      return { ok: true };
+    }
+    case 'fake': return d.fake ? fakeOp(d.fake, msg) : null; // tests only
+    default: return { error: 'unknown op' };
+  }
+}
+
+// tests reach the Google stand-in through here
+async function fakeOp(g, msg) {
+  if (msg.do === 'files') return [...g.files.values()];
+  if (msg.do === 'text') return g.docText(msg.id);
+  if (msg.do === 'type') { await g.typeInDoc(msg.id, g.findText(msg.id, msg.before), msg.text); return true; }
+  if (msg.do === 'comments') return g.listComments(msg.id);
+  return null;
+}
+
+// (not under plain Node, where the unit tests load this file)
+if (process.versions.electron) require('electron').ipcMain.handle('neo-drive', handle);
+
+// The Google Drive menu, before Help. `rebuild` is main.js's buildMenu, so
+// the menu can show what's connected after a change.
+function extendAppMenu(template, rebuild) {
+  if (typeof rebuild === 'function') rebuildMenu = rebuild;
+  let st;
+  try { st = status(); } catch (err) { logError('menu', err); return template; }
+  const items = [];
+  if (!st.available) {
+    items.push({ label: t('This build has no Google sign-in configured'), enabled: false });
+  } else if (st.connected) {
+    items.push({ label: st.email ? t('Connected as {email}', { email: st.email }) : t('Connected'), enabled: false });
+    if (st.error) items.push({ label: st.error, enabled: false });
+    items.push(
+      { type: 'separator' },
+      { label: t('Sync Now'), click: () => sendToWindow({ type: 'nd-syncNow' }) },
+      { type: 'separator' },
+      { label: t('Open This Book in Google Drive'), click: () => sendToWindow({ type: 'nd-open', what: 'folder' }) },
+      { label: t('Open the Master Manuscript'), click: () => sendToWindow({ type: 'nd-open', what: 'master' }) },
+      { label: t('Open This Chapter’s Google Doc'), click: () => sendToWindow({ type: 'nd-open', what: 'chapter' }) },
+      { type: 'separator' },
+      { label: t('Disconnect Google Drive'), click: () => disconnect() }
+    );
+  } else {
+    items.push({ label: t('Connect Google Drive…'), click: () => connect() });
+  }
+  const menu = { label: t('Google Drive'), submenu: items };
+  const out = [...template];
+  const help = out.findIndex((m) => m && m.role === 'help' || (m && m.label === t('Help')));
+  out.splice(help < 0 ? out.length : help, 0, menu);
+  return out;
+}
+
+module.exports = { extendTextMenu, extendAppMenu, LATEST_RELEASE_API };
