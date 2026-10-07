@@ -8,7 +8,7 @@ const { FakeGoogle } = require('../neo-drive/fake-google.js');
 const DOC = 'application/vnd.google-apps.document';
 const p = (text, extra = {}) => B.normalize({ k: 'p', text, ...extra });
 const brk = () => B.normalize({ k: 'brk' });
-const ch = (text) => B.normalize({ k: 'chapter', text });
+const ch = (text) => B.heading(text);
 
 async function freshDoc(g) { return (await g.createFile({ name: 'T', mimeType: DOC })).id; }
 async function write(g, id, want) {
@@ -133,7 +133,7 @@ test('fuzz: any edit lands exactly', async () => {
   const randBlock = () => {
     const r = rnd(10);
     if (r === 0) return brk();
-    if (r === 1) return ch('Chapter ' + rnd(30));
+    if (r === 1) return B.heading('Chapter ' + rnd(30), 8, rnd(2) ? { pb: true } : {});
     const n = 1 + rnd(8);
     const text = Array.from({ length: n }, () => words[rnd(words.length)]).join(' ');
     const marks = rnd(3) === 0 ? [[0, Math.min(text.length, 1 + rnd(text.length)), ['b', 'i', 'u', 'x', 'bi'][rnd(5)]]] : [];
@@ -162,29 +162,35 @@ test('fuzz: any edit lands exactly', async () => {
   }
 });
 
-test('master profile: every kind reads back as written', async () => {
+test('page breaks, spacing and sizes read back as written', async () => {
   const g = new FakeGoogle();
   const id = await freshDoc(g);
-  const m = (b) => B.normalize(b, 'master');
   const want = [
-    m({ k: 'title', text: 'The Lighthouse' }), m({ k: 'subtitle', text: 'Book One' }), m({ k: 'author', text: 'Ethan Everitt' }),
-    m({ k: 'heading', text: 'CONTENTS' }), m({ k: 'toc', text: 'Prologue' }), m({ k: 'tocpart', text: 'PART I: THE CROSSING' }),
-    m({ k: 'toc', text: 'Chapter 1 — The Keeper’s House', ind: 'poetry' }),
-    m({ k: 'chapter', text: 'PROLOGUE' }), m({ k: 'p', text: 'The lamp was lit.' }), m({ k: 'brk' }),
-    m({ k: 'part', text: 'PART I' }), m({ k: 'parttitle', text: 'The Crossing' }),
-    m({ k: 'chapter', text: 'CHAPTER 1 — THE KEEPER’S HOUSE' }), m({ k: 'p', text: 'Mara knew.', marks: [[0, 4, 'i']] })
+    B.normalize({ ...B.heading('The Lighthouse'), sz: 20, sa: 150, ls: 100 }),
+    B.normalize({ k: 'p', text: 'Book One', marks: [[0, 8, 'i']], align: 'center', sz: 14, ls: 100 }),
+    B.normalize({ ...B.heading('Contents'), pb: true }),
+    B.normalize({ k: 'p', text: 'Part I: The Crossing', ind: 'flush', sa: 12 }),
+    B.normalize({ k: 'p', text: 'Chapter 1: The Keeper’s House', ind: 'poetry' }),
+    B.normalize({ ...B.heading('PART I:'), pb: true, sa: 72 }), B.heading('The Crossing', 0),
+    B.normalize({ ...B.heading('Chapter 1: The Keeper’s House', 11), pb: true }),
+    p('Mara knew.', { marks: [[0, 4, 'i']] }), brk()
   ];
-  const doc = await g.getDoc(id);
-  await g.batchUpdate(id, B.editRequests(doc, want, 'master'));
-  const back = B.fromDoc(await g.getDoc(id), 'master');
-  assert.deepStrictEqual(keys(back), keys(want));
-  // and the look: Georgia, 1.5 lines, a 1/3-inch indent; new pages for headings
+  await write(g, id, want);
+  assert.deepStrictEqual(keys(await read(g, id)), keys(want));
   const d = await g.getDoc(id);
-  const para = (t) => d.body.content.find((e) => e.paragraph && e.paragraph.elements.map((x) => x.textRun.content).join('').startsWith(t)).paragraph;
-  assert.deepStrictEqual([para('The pen').paragraphStyle.lineSpacing, para('The pen').paragraphStyle.indentFirstLine.magnitude], [150, 24]);
-  assert.strictEqual(para('The pen').elements[0].textRun.textStyle.weightedFontFamily.fontFamily, 'Georgia');
-  assert.strictEqual(para('PROLOGUE').paragraphStyle.pageBreakBefore, true);
-  assert.strictEqual(para('PART I\n').paragraphStyle.pageBreakBefore, true);
-  assert.strictEqual(para('The Crossing').paragraphStyle.pageBreakBefore, false);
-  assert.strictEqual(para('The Lighthouse').paragraphStyle.pageBreakBefore, false);
+  // plain paragraphs only: no heading styles
+  assert.ok(d.body.content.filter((e) => e.paragraph).every((e) => e.paragraph.paragraphStyle.namedStyleType === 'NORMAL_TEXT'));
+  const h = d.body.content.filter((e) => e.paragraph && e.paragraph.paragraphStyle.pageBreakBefore).map((e) => e.paragraph).find((x) => x.elements.map((r) => r.textRun.content).join('').startsWith('Chapter 1'));
+  assert.deepStrictEqual([h.paragraphStyle.lineSpacing, h.paragraphStyle.spaceAbove.magnitude, h.paragraphStyle.spaceBelow.magnitude, h.paragraphStyle.pageBreakBefore], [200, 0, 0, true]);
+  assert.ok(B.isHeading(B.fromDoc(d).find((b) => b.text === 'The Crossing')));
+  assert.ok(!B.isHeading(B.fromDoc(d).find((b) => b.text === 'Mara knew.')));
+});
+
+test('a heading whose words change takes the whole look again', async () => {
+  const g = new FakeGoogle();
+  const id = await freshDoc(g);
+  await write(g, id, [B.normalize({ ...B.heading('Chapter 2 — Old'), sa: 24, sb: 24, ls: 100 }), p('Text.')]);
+  await write(g, id, [B.heading('Chapter 2: Old', 11), p('Text.')]);
+  const hd = (await g.getDoc(id)).body.content.find((e) => e.paragraph).paragraph.paragraphStyle;
+  assert.deepStrictEqual([hd.spaceAbove.magnitude, hd.spaceBelow.magnitude, hd.lineSpacing], [0, 0, 200]);
 });

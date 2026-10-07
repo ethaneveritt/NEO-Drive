@@ -212,23 +212,32 @@ test('a part is a folder holding its chapters; the Master gets a part page', asy
     const d = await docFor(id);
     if (d) assert.deepEqual(d.parents, [part.id], d.name);
   }
-  // the Master: like NEO's Word export
+  // the Master: NEO's export's pages, in the chapters' look
   const m = await fake({ do: 'doc', id: (await master()).id });
   const paras = m.body.content.filter((e) => e.paragraph).map((e) => ({
     text: e.paragraph.elements.map((x) => x.textRun.content).join('').replace(/\n$/, ''),
     ps: e.paragraph.paragraphStyle,
-    ts: (e.paragraph.elements[0].textRun || {}).textStyle || {}
+    runs: e.paragraph.elements.map((x) => x.textRun).filter((r) => r.content !== '\n')
   }));
   const find = (t) => paras.find((x) => x.text === t);
-  assert.ok(find('CONTENTS'), paras.map((x) => x.text).slice(0, 12).join(' | '));
-  assert.ok(find('PART I: THE CROSSING'), 'contents line for the part');
-  assert.equal(find('PART I').ps.pageBreakBefore, true);
-  assert.equal(find('PART I').ts.fontSize.magnitude, 14);
-  assert.equal(find('The Crossing').ts.fontSize.magnitude, 24);
-  const ch1 = paras.find((x) => /^CHAPTER 1 — /.test(x.text));
-  assert.ok(ch1 && ch1.ps.pageBreakBefore, 'chapter heading in capitals on a new page');
+  assert.ok(find('Contents'), paras.map((x) => x.text).slice(0, 12).join(' | '));
+  assert.ok(find('Part I: The Crossing'), 'contents line for the part');
+  const partHead = find('PART I:');
+  assert.equal(partHead.ps.pageBreakBefore, true);
+  assert.deepEqual([partHead.runs[0].textStyle.fontSize.magnitude, partHead.runs[0].textStyle.bold], [12, true]);
+  const partTitle = find('The Crossing');
+  assert.deepEqual([partTitle.runs[0].textStyle.fontSize.magnitude, partTitle.runs[0].textStyle.bold, partTitle.runs[0].textStyle.italic], [12, true, true]);
+  const ch1 = paras.find((x) => /^Chapter 1: /.test(x.text) && x.ps.pageBreakBefore);
+  assert.ok(paras.every((x) => x.ps.namedStyleType === 'NORMAL_TEXT'), 'plain paragraphs only');
+  assert.ok(ch1 && ch1.ps.pageBreakBefore, 'chapter heading on a new page');
+  const r1 = ch1.runs.map((r) => [r.content.replace(/\n$/, ''), !!r.textStyle.bold, !!r.textStyle.italic, r.textStyle.fontSize.magnitude]);
+  assert.deepEqual(r1[0], ['Chapter 1: ', true, false, 12]);
+  assert.match(r1[1][0], /^Cold Front/);
+  assert.deepEqual(r1[1].slice(1), [true, true, 12]);
+  assert.deepEqual([ch1.ps.spaceAbove.magnitude, ch1.ps.spaceBelow.magnitude], [0, 0]);
   const prose = paras.find((x) => x.text.startsWith('It rained'));
-  assert.deepEqual([prose.ts.weightedFontFamily.fontFamily, prose.ps.lineSpacing, prose.ps.indentFirstLine.magnitude], ['Georgia', 150, 24]);
+  assert.deepEqual([prose.runs[0].textStyle.weightedFontFamily.fontFamily, prose.ps.lineSpacing, prose.ps.indentFirstLine.magnitude], ['Times New Roman', 200, 36]);
+  assert.ok(!paras.some((x) => x.runs.some((r) => r.textStyle.weightedFontFamily && r.textStyle.weightedFontFamily.fontFamily !== 'Times New Roman')), 'Times New Roman throughout');
   assert.match(diskText('ch-part-test'), /The Crossing/);
 });
 
