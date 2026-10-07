@@ -240,20 +240,64 @@
     return [{ k: 'chapter', text, marks: ital(text, name.length + 2) }];
   }
 
+  // The open book as the sync wants it: a Doc per chapter (with the part it
+  // sits in), the parts (folders), and the Master Manuscript laid out the way
+  // NEO's own Word export lays a book out — title page, contents, a page per
+  // part, chapter headings in capitals.
   function bookModel() {
     if (!book.uuid) { book.uuid = crypto.randomUUID(); saveMeta(); }
+    const solo = soloStory();
+    const up = (s) => s.toLocaleUpperCase(writingLanguage());
     const entries = [];
+    const parts = [];
+    const toc = [];
+    const body = []; // master blocks after the contents page, with their owners
+    const m = (b, owner = '') => ({ b, owner });
+    let part = null;
     for (const chId of book.chapterOrder) {
       const kind = chapterKind(chId);
       if (kind === 'contents') continue;
+      if (BACK_KINDS.includes(kind)) part = null;
       const html = liveHtml(chId);
       const all = blocksOf(html);
       const heads = headsFor(chId, kind, html, all);
       const blocks = all.slice(partSkip.get(chId) || 0);
+      if (kind === 'part') {
+        part = chId;
+        const label = chapterName(chId);
+        const title = partSkip.get(chId) ? all[0].text : '';
+        const name = title ? `${label}: ${title}` : label;
+        parts.push({ partId: chId, name });
+        toc.push(m({ k: 'tocpart', text: up(name) }, name));
+        body.push(m({ k: 'part', text: up(label) }, name));
+        if (title) body.push(m({ k: 'parttitle', text: title }, name));
+        for (const b of blocks) body.push(m(b, name));
+        // the part's own page has a Doc only when it holds more than its title
+        if (blocks.length) entries.push({ chId, kind, heads, name, blocks, part: chId });
+        continue;
+      }
       const name = heads.length ? heads.map((h) => h.text).join(' ') : (chapterHeading(chId) || chapterName(chId));
-      entries.push({ chId, kind, heads, name, blocks });
+      entries.push({ chId, kind, heads, name, blocks, part });
+      if (FRONT_PAGES.includes(kind)) {
+        for (const b of blocks) body.push(m(b, name));
+        continue;
+      }
+      const heading = chId === solo ? '' : (kind === 'acknowledgments' || kind === 'about' ? kindName(kind) : chapterHeading(chId));
+      if (heading) {
+        toc.push(m({ k: 'toc', text: heading, ind: part ? 'poetry' : 'flush' }, name));
+        body.push(m({ k: kind === 'acknowledgments' || kind === 'about' ? 'heading' : 'chapter', text: up(heading) }, name));
+      }
+      for (const b of blocks) body.push(m(b, name));
     }
-    return { book: { uuid: book.uuid, title: book.title || '', subtitle: book.subtitle || '', author: book.author || '' }, entries };
+    const master = [m({ k: 'title', text: book.title || t('Untitled') })];
+    if (book.subtitle) master.push(m({ k: 'subtitle', text: book.subtitle }));
+    if (book.author) master.push(m({ k: 'author', text: book.author }));
+    if (toc.length > 1) master.push(m({ k: 'heading', text: up(t('Contents')) }), ...toc);
+    master.push(...body);
+    return {
+      book: { uuid: book.uuid, title: book.title || '', subtitle: book.subtitle || '', author: book.author || '' },
+      entries, parts, master
+    };
   }
 
   async function driveTick(force) {
@@ -261,7 +305,7 @@
     const bookId = book.id;
     if (lastBook !== bookId) { lastBook = bookId; lastSig = ''; }
     const model = bookModel();
-    const sig = JSON.stringify([model.book, model.entries.map((e) => [e.chId, e.kind, e.heading, e.name, e.blocks.map(DB.blockKey)])]);
+    const sig = JSON.stringify([model.book, model.parts, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)])]);
     syncing = true;
     try {
       const r = await window.neo.neoDrive({ op: 'sync', model: { ...model, dirty: force || sig !== lastSig, force: !!force } });

@@ -161,3 +161,30 @@ test('fuzz: any edit lands exactly', async () => {
     }
   }
 });
+
+test('master profile: every kind reads back as written', async () => {
+  const g = new FakeGoogle();
+  const id = await freshDoc(g);
+  const m = (b) => B.normalize(b, 'master');
+  const want = [
+    m({ k: 'title', text: 'The Lighthouse' }), m({ k: 'subtitle', text: 'Book One' }), m({ k: 'author', text: 'Ethan Everitt' }),
+    m({ k: 'heading', text: 'CONTENTS' }), m({ k: 'toc', text: 'Prologue' }), m({ k: 'tocpart', text: 'PART I: TECHNIQUE GOD' }),
+    m({ k: 'toc', text: 'Chapter 1 — The Keeper’s House', ind: 'poetry' }),
+    m({ k: 'chapter', text: 'PROLOGUE' }), m({ k: 'p', text: 'The lamp was lit.' }), m({ k: 'brk' }),
+    m({ k: 'part', text: 'PART I' }), m({ k: 'parttitle', text: 'The Crossing' }),
+    m({ k: 'chapter', text: 'CHAPTER 1 — A DEAD GOD’S HOUSE' }), m({ k: 'p', text: 'Mara knew.', marks: [[0, 4, 'i']] })
+  ];
+  const doc = await g.getDoc(id);
+  await g.batchUpdate(id, B.editRequests(doc, want, 'master'));
+  const back = B.fromDoc(await g.getDoc(id), 'master');
+  assert.deepStrictEqual(keys(back), keys(want));
+  // and the look: Georgia, 1.5 lines, a 1/3-inch indent; new pages for headings
+  const d = await g.getDoc(id);
+  const para = (t) => d.body.content.find((e) => e.paragraph && e.paragraph.elements.map((x) => x.textRun.content).join('').startsWith(t)).paragraph;
+  assert.deepStrictEqual([para('The pen').paragraphStyle.lineSpacing, para('The pen').paragraphStyle.indentFirstLine.magnitude], [150, 24]);
+  assert.strictEqual(para('The pen').elements[0].textRun.textStyle.weightedFontFamily.fontFamily, 'Georgia');
+  assert.strictEqual(para('PROLOGUE').paragraphStyle.pageBreakBefore, true);
+  assert.strictEqual(para('PART I\n').paragraphStyle.pageBreakBefore, true);
+  assert.strictEqual(para('The Crossing').paragraphStyle.pageBreakBefore, false);
+  assert.strictEqual(para('The Lighthouse').paragraphStyle.pageBreakBefore, false);
+});

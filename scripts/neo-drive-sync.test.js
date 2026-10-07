@@ -28,23 +28,85 @@ function setup() {
   return { g, s, book, entries, sync, files, chapterDoc, master, tick: (ms) => { clock += ms; } };
 }
 
-test('first sync makes a folder, a Master Manuscript, and a Doc per chapter', async () => {
+test('first sync makes a folder, a Master Manuscript, a Chapters folder and a Doc per chapter', async () => {
   const t = setup();
   const r = await t.sync();
   assert.strictEqual(r.created, 3);
-  const folder = t.files().find((f) => f.mimeType.includes('folder'));
+  const folder = t.files().find((f) => f.mimeType.includes('folder') && !f.appProperties.neoRole);
+  const chapters = t.files().find((f) => f.appProperties.neoRole === 'chapters');
   assert.strictEqual(folder.name, 'The Lighthouse');
+  assert.strictEqual(chapters.name, 'Chapters');
+  assert.deepStrictEqual(chapters.parents, [folder.id]);
   assert.strictEqual(t.chapterDoc('c1').name, '01 · Chapter 1 — Cold Front');
   assert.strictEqual(t.chapterDoc('c2').name, '02 · Chapter 2 — The Keeper’s House');
+  assert.deepStrictEqual(t.chapterDoc('c1').parents, [chapters.id]);
   assert.strictEqual(t.master().name, 'The Lighthouse — Master Manuscript');
-  assert.ok(t.chapterDoc('c1').parents.includes(folder.id));
+  assert.deepStrictEqual(t.master().parents, [folder.id]);
   const c1 = B.fromDoc(await t.g.getDoc(t.chapterDoc('c1').id));
   assert.deepStrictEqual(c1.map((b) => b.k), ['chapter', 'p', 'brk', 'p']);
-  const m = B.fromDoc(await t.g.getDoc(t.master().id));
-  assert.deepStrictEqual(m.map((b) => b.text), ['The Lighthouse', 'Book One', 'by Ethan Everitt', 'Chapter 1 — Cold Front', 'It rained on the harbor.', '***', 'Mara counted coins.', 'Chapter 2 — The Keeper’s House', 'The house was cold.']);
+  const m = B.fromDoc(await t.g.getDoc(t.master().id), 'master');
+  assert.deepStrictEqual(m.map((b) => b.text), ['The Lighthouse', 'Book One', 'Ethan Everitt', 'Chapter 1 — Cold Front', 'It rained on the harbor.', '***', 'Mara counted coins.', 'Chapter 2 — The Keeper’s House', 'The house was cold.']);
   // the reading-copy reminder in the header
   const hdr = Object.values((await t.g.getDoc(t.master().id)).headers)[0];
   assert.match(hdr.content[0].paragraph.elements[0].textRun.content, /Reading copy/);
+});
+
+test('parts are folders inside Chapters, holding their chapters', async () => {
+  const t = setup();
+  const parts = [{ partId: 'p1', name: 'Part I: The Crossing' }, { partId: 'p2', name: 'Part II: The Road' }];
+  t.entries.unshift({ chId: 'c0', kind: 'prologue', heading: 'Prologue', name: 'Prologue', blocks: [p('Before.')] });
+  t.entries[1].part = 'p1';
+  t.entries[2].part = 'p1';
+  await t.sync({ parts });
+  const chapters = t.files().find((f) => f.appProperties.neoRole === 'chapters');
+  const p1 = t.files().find((f) => f.appProperties.neoPart === 'p1');
+  const p2 = t.files().find((f) => f.appProperties.neoPart === 'p2');
+  assert.strictEqual(p1.name, 'Part I: The Crossing');
+  assert.deepStrictEqual(p1.parents, [chapters.id]);
+  assert.deepStrictEqual(t.chapterDoc('c0').parents, [chapters.id]);
+  assert.strictEqual(t.chapterDoc('c0').name, '01 · Prologue');
+  assert.deepStrictEqual(t.chapterDoc('c1').parents, [p1.id]);
+  assert.strictEqual(t.chapterDoc('c1').name, '01 · Chapter 1 — Cold Front');
+  assert.strictEqual(t.chapterDoc('c2').name, '02 · Chapter 2 — The Keeper’s House');
+  // chapter 2 moves to part II: its Doc follows, renumbered
+  t.entries[2].part = 'p2';
+  await t.sync({ parts });
+  assert.deepStrictEqual(t.chapterDoc('c2').parents, [p2.id]);
+  assert.strictEqual(t.chapterDoc('c2').name, '01 · Chapter 2 — The Keeper’s House');
+  // the part is renamed, then dropped: its folder goes to Deleted chapters
+  parts[1].name = 'Part II: The Long Road';
+  await t.sync({ parts });
+  assert.strictEqual(t.files().find((f) => f.id === p2.id).name, 'Part II: The Long Road');
+  t.entries[2].part = 'p1';
+  await t.sync({ parts: [parts[0]] });
+  const deleted = t.files().find((f) => f.appProperties.neoRole === 'deleted');
+  assert.deepStrictEqual(deleted.parents, [chapters.id]);
+  assert.deepStrictEqual(t.files().find((f) => f.id === p2.id).parents, [deleted.id]);
+  assert.deepStrictEqual(t.chapterDoc('c2').parents, [p1.id]);
+});
+
+test('Docs from the old layout (all in the book folder) move into Chapters', async () => {
+  const t = setup();
+  await t.sync();
+  const folder = t.files().find((f) => f.mimeType.includes('folder') && !f.appProperties.neoRole);
+  const chapters = t.files().find((f) => f.appProperties.neoRole === 'chapters');
+  const doc = t.g.files.get(t.chapterDoc('c1').id);
+  doc.parents = [folder.id]; // as 1.4.7 left it
+  await t.sync();
+  assert.deepStrictEqual(t.chapterDoc('c1').parents, [chapters.id]);
+});
+
+test('a Doc moved by hand somewhere else in Drive stays where it was put', async () => {
+  const t = setup();
+  await t.sync();
+  const mine = await t.g.createFile({ name: 'My stuff', mimeType: 'application/vnd.google-apps.folder' });
+  t.g.files.get(t.chapterDoc('c1').id).parents = [mine.id];
+  const count = t.g.files.size;
+  t.entries[0].blocks[0] = p('It poured on the harbor.');
+  await t.sync();
+  assert.strictEqual(t.g.files.size, count, 'no duplicate made');
+  assert.deepStrictEqual(t.chapterDoc('c1').parents, [mine.id]);
+  assert.match(t.g.docText(t.chapterDoc('c1').id), /It poured/);
 });
 
 test('nothing changed: nothing written', async () => {

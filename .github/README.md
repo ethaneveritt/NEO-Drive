@@ -24,14 +24,22 @@ NEO-Drive asks Google for one permission only: **the files NEO-Drive itself crea
 
 ## How it works
 
-| In NEO | In Google Drive |
-|---|---|
-| A book | A folder named for the book — its title, its subtitle, or both (**Google Drive → Name Book Folders By**) |
-| The whole book | **Master Manuscript** Doc — a reading copy to share |
-| Each chapter (and part, prologue…) | Its own Doc, `01 · Chapter 1 — …`, `02 · …` |
-| Deleting a chapter | Its Doc moves to a **Deleted chapters** folder. Nothing is ever deleted. |
+```
+The Lighthouse: Book One/                  the book (named by title, subtitle, or both)
+├── The Lighthouse — Master Manuscript     the whole book: a reading copy to share
+└── Chapters/
+    ├── 01 · Prologue                  a Doc per chapter
+    ├── Part I: The Crossing/         a folder per part, holding its chapters
+    │   ├── 01 · Chapter 1: The Keeper’s House
+    │   └── 02 · Chapter 2: Low Tide
+    └── Deleted chapters/              a chapter deleted in NEO goes here — nothing is ever deleted
+```
 
-Docs are set plainly: Times New Roman, double-spaced, bold headings for parts and chapters, `***` for scene breaks, italics and bold as you wrote them.
+The **chapter Docs** are set like a manuscript: Times New Roman 12, double-spaced, a bold centered heading (“Chapter 2: *Low Tide*”), `***` for scene breaks, italics and bold as you wrote them.
+
+The **Master Manuscript** is set the way NEO's own Word export sets a book: a title page, a contents page, a page for each part, and each chapter starting a new page under its heading in capitals, in Georgia at 1.5 lines.
+
+Move a chapter to another part in NEO and its Doc moves folders with it. Move the book's folder anywhere in your Drive and it keeps working.
 
 **Writing in NEO.** A few seconds after you pause, the chapter's Doc and the Master Manuscript are updated — only the paragraphs that changed, so comments on the rest stay put. Each update lands in the Doc's version history (**File → Version history**).
 

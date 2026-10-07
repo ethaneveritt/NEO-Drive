@@ -1,7 +1,15 @@
 // NEO-Drive: keeping a book and its Google Docs the same.
 //
-// For each book: a folder in Drive, a Master Manuscript Doc (the whole book,
-// a reading copy), and one Doc per chapter. The window (renderer.js) hands
+// For each book, in Drive:
+//   <book>/                          named by title, subtitle, or both
+//     <book> — Master Manuscript     the whole book, a reading copy, set
+//                                    like NEO's own Word export
+//     Chapters/
+//       01 · Prologue                a Doc per chapter
+//       Part I: The Crossing/       a folder per part, holding its chapters
+//         01 · Chapter 1: …
+//       Deleted chapters/
+// The window (renderer.js) hands
 // over the open book as blocks every few seconds; this decides, chapter by
 // chapter, what moves which way:
 //
@@ -65,7 +73,7 @@ class Sync {
     const st = this.load(uuid);
     const chapters = {};
     for (const [chId, c] of Object.entries(st.chapters || {})) chapters[chId] = c.docId;
-    return { folderId: st.folderId || null, masterId: st.masterId || null, chapters };
+    return { folderId: st.folderId || null, masterId: st.masterId || null, chaptersFolderId: st.chaptersFolderId || null, chapters };
   }
 
   // One sync at a time; a call while one runs waits its turn.
@@ -91,33 +99,57 @@ class Sync {
     if (!poll && !localDirty && st.folderId) return out;
 
     await this.ensureFolder(st, book);
-    // what Drive holds in the folder, with versions: one call shows every
-    // Doc edited since the last look
+    // every file of this book, wherever it sits in Drive, with versions: one
+    // call shows every Doc edited since the last look
     const listed = new Map();
-    for (const f of await this.api.listFiles(`'${esc(st.folderId)}' in parents and trashed = false`)) listed.set(f.id, f);
+    for (const f of await this.api.listFiles(`appProperties has { key='neoBook' and value='${esc(book.uuid)}' } and trashed = false`)) listed.set(f.id, f);
     st.polledAt = t0;
+    const tagged = (key, value, mime) => [...listed.values()].find((f) => f.appProperties && f.appProperties[key] === value && (!mime || f.mimeType === mime));
 
-    const docWant = (e) => headsOf(e).concat(e.blocks.map(B.normalize));
+    // ---- folders: Chapters, and one per part
+    st.chaptersFolderId = await this.ensureSubfolder(st.chaptersFolderId, listed, tagged('neoRole', 'chapters', FOLDER), 'Chapters', st.folderId, { neoBook: book.uuid, neoRole: 'chapters' });
+    st.parts = st.parts || {};
+    for (const part of model.parts || []) {
+      const known = st.parts[part.partId];
+      const id = await this.ensureSubfolder(known && known.id, listed, [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'part' && f.appProperties.neoPart === part.partId), part.name, st.chaptersFolderId, { neoBook: book.uuid, neoRole: 'part', neoPart: part.partId });
+      if (!known || known.name !== part.name) {
+        if (known && known.id === id) await this.api.updateFile(id, { name: part.name });
+      }
+      st.parts[part.partId] = { id, name: part.name };
+    }
+    // the folders a Doc of ours may be moved out of (one moved anywhere
+    // else in Drive by hand stays where it was put)
+    const ours = new Set([st.folderId, st.chaptersFolderId, st.deletedFolderId, ...Object.values(st.parts).map((x) => x.id)].filter(Boolean));
+    const containerOf = (e) => (e.part && st.parts[e.part] ? st.parts[e.part].id : st.chaptersFolderId);
+    const counts = new Map();
+
+    const docWant = (e) => headsOf(e).concat(e.blocks.map((b) => B.normalize(b)));
 
     // ---- chapters
-    for (let n = 0; n < model.entries.length; n++) {
-      const e = model.entries[n];
+    for (const e of model.entries) {
       const want = docWant(e);
-      const name = `${pad(n + 1)} · ${e.name}`;
+      const where = containerOf(e);
+      let name;
+      if (e.kind === 'part') name = `00 · ${e.name}`; // a part's own page heads its folder
+      else {
+        const n = (counts.get(where) || 0) + 1;
+        counts.set(where, n);
+        name = `${pad(n)} · ${e.name}`;
+      }
       let c = st.chapters[e.chId];
       if (c && !listed.has(c.docId)) {
-        // gone from the folder (moved or trashed in Drive): look for it by its tag
-        const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoChapter === e.chId);
+        // trashed, or this computer had the wrong id: look for it by its tag
+        const found = tagged('neoChapter', e.chId, DOC);
         if (found) c.docId = found.id; else c = null;
       }
       if (!c) {
-        const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoChapter === e.chId && f.mimeType === DOC);
+        const found = tagged('neoChapter', e.chId, DOC);
         if (found) {
           // a Doc made before (this computer forgot it): adopt, and treat its
           // text as the agreed one only if it matches
           c = st.chapters[e.chId] = { docId: found.id, base: null, version: null, name: found.name };
         } else {
-          const f = await this.api.createFile({ name, mimeType: DOC, parents: [st.folderId], appProperties: { neoBook: book.uuid, neoChapter: e.chId } });
+          const f = await this.api.createFile({ name, mimeType: DOC, parents: [where], appProperties: { neoBook: book.uuid, neoChapter: e.chId } });
           await this.write(f.id, want);
           const v = await this.api.getFile(f.id);
           st.chapters[e.chId] = { docId: f.id, base: keysOf(want), version: v.version, name };
@@ -125,15 +157,19 @@ class Sync {
           continue;
         }
       }
-      if (c.name !== name) {
-        await this.api.updateFile(c.docId, { name });
+      const lv = listed.get(c.docId);
+      const parents = (lv && lv.parents) || [];
+      const move = !parents.includes(where) && parents.some((p) => ours.has(p));
+      if (c.name !== name || move) {
+        await this.api.updateFile(c.docId, {
+          name,
+          ...(move ? { addParents: [where], removeParents: parents.filter((p) => ours.has(p)) } : {})
+        });
         c.name = name;
-        const v = listed.get(c.docId);
-        if (v) v.version = null; // the rename bumped it; read the Doc to be sure
+        if (lv) lv.version = null; // the change bumped it; read the Doc to be sure
       }
       const base = c.base;
       const localChanged = !base || !sameKeys(want, base);
-      const lv = listed.get(c.docId);
       const remoteMaybe = !base || !lv || lv.version !== c.version;
       if (!localChanged && !remoteMaybe) continue;
 
@@ -148,20 +184,32 @@ class Sync {
     const inBook = new Set(model.entries.map((e) => e.chId));
     for (const [chId, c] of Object.entries(st.chapters)) {
       if (inBook.has(chId)) continue;
-      if (!st.deletedFolderId) {
-        const f = await this.api.createFile({ name: 'Deleted chapters', mimeType: FOLDER, parents: [st.folderId], appProperties: { neoBook: book.uuid, neoRole: 'deleted' } });
-        st.deletedFolderId = f.id;
-      }
+      await this.ensureDeleted(st, listed, book);
       try {
         const when = new Date(this.now()).toISOString().slice(0, 10);
+        const f = listed.get(c.docId) || await this.api.getFile(c.docId);
         await this.api.updateFile(c.docId, {
           name: `${(c.name || 'Chapter').replace(/^\d+ · /, '')} (deleted ${when})`,
-          addParents: [st.deletedFolderId], removeParents: [st.folderId]
+          addParents: [st.deletedFolderId], removeParents: (f.parents || []).filter((p) => p !== st.deletedFolderId)
         });
       } catch (err) {
         if (err.status !== 404) throw err; // already gone from Drive: nothing to keep
       }
       delete st.chapters[chId];
+    }
+
+    // ---- parts that left the book: their folders (empty now) go to "Deleted chapters"
+    for (const [partId, part] of Object.entries(st.parts)) {
+      if ((model.parts || []).some((x) => x.partId === partId)) continue;
+      await this.ensureDeleted(st, listed, book);
+      try {
+        const f = listed.get(part.id) || await this.api.getFile(part.id);
+        const when = new Date(this.now()).toISOString().slice(0, 10);
+        await this.api.updateFile(part.id, { name: `${part.name} (deleted ${when})`, addParents: [st.deletedFolderId], removeParents: (f.parents || []).filter((p) => p !== st.deletedFolderId) });
+      } catch (err) {
+        if (err.status !== 404) throw err;
+      }
+      delete st.parts[partId];
     }
 
     // ---- the Master Manuscript
@@ -211,6 +259,20 @@ class Sync {
     c.version = (await this.api.getFile(c.docId)).version;
   }
 
+  // A folder of ours: the one we know if it's still there, else one tagged
+  // as it, else a new one in `parent`.
+  async ensureSubfolder(knownId, listed, found, name, parent, appProperties) {
+    if (knownId && listed.has(knownId)) return knownId;
+    if (found) return found.id;
+    return (await this.api.createFile({ name, mimeType: FOLDER, parents: [parent], appProperties })).id;
+  }
+  async ensureDeleted(st, listed, book) {
+    if (st.deletedFolderId && listed.has(st.deletedFolderId)) return;
+    const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'deleted');
+    st.deletedFolderId = found ? found.id : (await this.api.createFile({ name: 'Deleted chapters', mimeType: FOLDER, parents: [st.chaptersFolderId || st.folderId], appProperties: { neoBook: book.uuid, neoRole: 'deleted' } })).id;
+    listed.set(st.deletedFolderId, { id: st.deletedFolderId, parents: [st.chaptersFolderId] });
+  }
+
   async ensureFolder(st, book) {
     if (st.folderId) {
       try {
@@ -228,7 +290,7 @@ class Sync {
       if (mine) st.folderId = mine.id;
       else st.folderId = (await this.api.createFile({ name: bookName(book), mimeType: FOLDER, appProperties: { neoBook: book.uuid } })).id;
       // a new folder: forget the Docs this computer thought it knew
-      if (!mine) { st.chapters = {}; st.masterId = null; st.deletedFolderId = null; }
+      if (!mine) { st.chapters = {}; st.masterId = null; st.deletedFolderId = null; st.chaptersFolderId = null; st.parts = {}; }
     }
   }
 
@@ -237,13 +299,18 @@ class Sync {
     const { book } = model;
     const want = [];
     const owner = []; // which chapter each block belongs to, for comments
-    const add = (b, name) => { want.push(B.normalize(b)); owner.push(name); };
-    add({ k: 'title', text: book.title || 'Untitled' }, '');
-    if (book.subtitle) add({ k: 'subtitle', text: book.subtitle }, '');
-    if (book.author) add({ k: 'p', text: 'by ' + book.author, align: 'center' }, '');
-    for (const e of model.entries) {
-      for (const h of headsOf(e)) add(h, e.name);
-      for (const b of e.blocks) add(b, e.name);
+    const add = (b, name) => { want.push(B.normalize(b, 'master')); owner.push(name); };
+    if (Array.isArray(model.master)) {
+      for (const m of model.master) add(m.b, m.owner || '');
+    } else {
+      // (a model without the window's layout: title, then the chapters)
+      add({ k: 'title', text: book.title || 'Untitled' }, '');
+      if (book.subtitle) add({ k: 'subtitle', text: book.subtitle }, '');
+      if (book.author) add({ k: 'author', text: book.author }, '');
+      for (const e of model.entries) {
+        for (const h of headsOf(e)) add(h, e.name);
+        for (const b of e.blocks) add(b, e.name);
+      }
     }
     const name = `${bookName(book)} — Master Manuscript`;
 
@@ -261,7 +328,7 @@ class Sync {
         const f = await this.api.createFile({ name, mimeType: DOC, parents: [st.folderId], appProperties: { neoBook: book.uuid, neoRole: 'master' } });
         st.masterId = f.id;
         await this.addReminder(f.id);
-        await this.write(f.id, want);
+        await this.write(f.id, want, null, 'master');
         st.masterBase = keysOf(want);
         st.masterOwner = owner;
         st.masterName = name;
@@ -277,7 +344,7 @@ class Sync {
     if (!localChanged && !remoteMaybe) return;
 
     const doc = await this.api.getDoc(st.masterId);
-    const remote = B.fromDoc(doc);
+    const remote = B.fromDoc(doc, 'master');
     const undone = [];
     if (st.masterBase && !sameKeys(remote, st.masterBase)) {
       // someone typed in the reading copy: it is put back below, and a
@@ -293,7 +360,7 @@ class Sync {
       }
     }
     if (!sameKeys(remote, keysOf(want))) {
-      await this.write(st.masterId, want, doc);
+      await this.write(st.masterId, want, doc, 'master');
       out.pushed++;
     }
     // said only once the edit really was undone
@@ -325,7 +392,7 @@ class Sync {
         {
           updateTextStyle: {
             range: { segmentId: headerId, startIndex: 0, endIndex: text.length },
-            textStyle: { italic: true, fontSize: { magnitude: 9, unit: 'PT' }, weightedFontFamily: { fontFamily: 'Times New Roman', weight: 400 } },
+            textStyle: { italic: true, fontSize: { magnitude: 9, unit: 'PT' }, weightedFontFamily: { fontFamily: 'Georgia', weight: 400 } },
             fields: 'italic,fontSize,weightedFontFamily'
           }
         },
@@ -339,9 +406,9 @@ class Sync {
   // Make the Doc read as `want`. Guarded by the Doc's revision: if it
   // changed since it was read (someone typing in Docs this very moment),
   // Google refuses, nothing is written, and the next sync sees the edit.
-  async write(docId, want, doc) {
+  async write(docId, want, doc, profile = 'chapter') {
     const d = doc || await this.api.getDoc(docId);
-    const reqs = B.editRequests(d, want);
+    const reqs = B.editRequests(d, want, profile);
     if (!reqs.length) return;
     await this.api.batchUpdate(docId, reqs, d.revisionId);
   }
@@ -361,7 +428,7 @@ function bookName(book, by = book.nameBy) {
 
 // a chapter's headings: as the window sent them (heads), or one plain heading
 function headsOf(e) {
-  if (Array.isArray(e.heads)) return e.heads.map(B.normalize);
+  if (Array.isArray(e.heads)) return e.heads.map((h) => B.normalize(h));
   return e.heading ? [B.normalize({ k: headingKind(e.kind), text: e.heading })] : [];
 }
 
