@@ -40,7 +40,7 @@ test('first sync makes a folder, a Master Manuscript, a Chapters folder and a Do
   assert.strictEqual(t.chapterDoc('c1').name, '01 · Chapter 1 — Cold Front');
   assert.strictEqual(t.chapterDoc('c2').name, '02 · Chapter 2 — The Keeper’s House');
   assert.deepStrictEqual(t.chapterDoc('c1').parents, [chapters.id]);
-  assert.strictEqual(t.master().name, 'The Lighthouse — Master Manuscript');
+  assert.strictEqual(t.master().name, 'The Lighthouse');
   assert.deepStrictEqual(t.master().parents, [folder.id]);
   const c1 = B.fromDoc(await t.g.getDoc(t.chapterDoc('c1').id));
   assert.deepStrictEqual(c1.map((b) => b.k), ['p', 'p', 'brk', 'p']);
@@ -82,7 +82,8 @@ test('parts are folders inside Chapters, holding their chapters', async () => {
   t.entries[2].part = 'p1';
   await t.sync({ parts: [parts[0]] });
   const deleted = t.files().find((f) => f.appProperties.neoRole === 'deleted');
-  assert.deepStrictEqual(deleted.parents, [chapters.id]);
+  assert.strictEqual(deleted.name, 'The Lighthouse Deleted Chapters');
+  assert.deepStrictEqual(deleted.parents, t.files().find((f) => f.mimeType.includes('folder') && !f.appProperties.neoRole).parents, 'beside the book folder');
   assert.deepStrictEqual(t.files().find((f) => f.id === p2.id).parents, [deleted.id]);
   assert.deepStrictEqual(t.chapterDoc('c2').parents, [p1.id]);
 });
@@ -190,8 +191,8 @@ test('a chapter deleted in NEO moves to "Deleted chapters", never deleted', asyn
   t.entries.splice(1, 1);
   await t.sync();
   const doc = t.g.files.get(id);
-  const deleted = t.files().find((f) => f.name === 'Deleted chapters');
-  assert.ok(deleted, 'Deleted chapters folder');
+  const deleted = t.files().find((f) => f.name === 'The Lighthouse Deleted Chapters');
+  assert.ok(deleted, 'Deleted Chapters folder');
   assert.deepStrictEqual(doc.parents, [deleted.id]);
   assert.strictEqual(doc.trashed, false);
   assert.match(doc.name, /^Chapter 2 — The Keeper’s House \(deleted \d{4}-\d\d-\d\d\)$/);
@@ -279,7 +280,7 @@ test('changing how folders are named renames the folder and the Master', async (
   await t.sync();
   const folder = t.files().find((f) => f.mimeType.includes('folder'));
   assert.strictEqual(folder.name, 'The Lighthouse: Book One');
-  assert.strictEqual(t.master().name, 'The Lighthouse: Book One — Master Manuscript');
+  assert.strictEqual(t.master().name, 'The Lighthouse: Book One');
   t.book.nameBy = 'subtitle';
   await t.sync();
   assert.strictEqual(t.files().find((f) => f.id === folder.id).name, 'Book One');
@@ -332,4 +333,43 @@ test('a Master set in an older look is set again, whole', async () => {
   const w = t.g.calls.write;
   await t.sync();
   assert.strictEqual(t.g.calls.write, w, 'only once');
+});
+
+test('Docs numbered by part: 0.1: Epigraph, 0.2: Prologue, 1.1: The Keeper’s House', async () => {
+  const t = setup();
+  t.book.numbering = 'part';
+  const parts = [{ partId: 'p1', name: 'Part I: The Crossing' }];
+  t.entries.splice(0, t.entries.length,
+    { chId: 'e', kind: 'epigraph', heads: [], name: 'Epigraph', label: 'Epigraph', section: 0, blocks: [p('A saying.')] },
+    { chId: 'pro', kind: 'prologue', heading: 'Prologue', name: 'Prologue', label: 'Prologue', section: 0, blocks: [p('Before.')] },
+    { chId: 'c1', kind: 'chapter', heading: 'Chapter 1: The Keeper’s House', name: 'Chapter 1: The Keeper’s House', label: 'The Keeper’s House', section: 1, part: 'p1', blocks: [p('Mara.')] },
+    { chId: 'c2', kind: 'chapter', heading: 'Chapter 2: Cold Front', name: 'Chapter 2: Cold Front', label: 'Cold Front', section: 1, part: 'p1', blocks: [p('Rain.')] },
+    { chId: 'ep', kind: 'epilogue', heading: 'Epilogue', name: 'Epilogue', label: 'Epilogue', section: 2, blocks: [p('After.')] });
+  await t.sync({ parts });
+  assert.deepStrictEqual(['e', 'pro', 'c1', 'c2', 'ep'].map((id) => t.chapterDoc(id).name), ['0.1: Epigraph', '0.2: Prologue', '1.1: The Keeper’s House', '1.2: Cold Front', '2.1: Epilogue']);
+  // and back to numbering in order
+  t.book.numbering = 'order';
+  await t.sync({ parts });
+  assert.strictEqual(t.chapterDoc('c1').name, '01 · Chapter 1: The Keeper’s House');
+});
+
+test('an old "Deleted chapters" folder inside Chapters is renamed and moved beside the book, once', async () => {
+  const t = setup();
+  await t.sync();
+  t.entries.splice(1, 1);
+  await t.sync(); // makes the deleted folder
+  const deleted = t.files().find((f) => f.appProperties.neoRole === 'deleted');
+  const chapters = t.files().find((f) => f.appProperties.neoRole === 'chapters');
+  // as 1.4.8–1.4.101 left it
+  const d = t.g.files.get(deleted.id);
+  d.parents = [chapters.id]; d.name = 'Deleted chapters';
+  const file = path.join(t.s.dir, 'books', 'book-uuid-1.json');
+  const st = JSON.parse(fs.readFileSync(file, 'utf8')); delete st.deletedPlaced; fs.writeFileSync(file, JSON.stringify(st));
+  await t.sync();
+  assert.strictEqual(t.g.files.get(deleted.id).name, 'The Lighthouse Deleted Chapters');
+  assert.ok(!t.g.files.get(deleted.id).parents.includes(chapters.id));
+  // moved by hand into Chapters again: left there
+  t.g.files.get(deleted.id).parents = [chapters.id];
+  await t.sync();
+  assert.deepStrictEqual(t.g.files.get(deleted.id).parents, [chapters.id]);
 });
