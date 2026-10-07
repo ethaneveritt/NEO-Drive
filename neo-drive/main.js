@@ -83,8 +83,8 @@ function writeSettings(obj) {
 }
 const NAME_BY = ['title', 'subtitle', 'both'];
 function nameBy() { const v = readSettings().nameBy; return NAME_BY.includes(v) ? v : 'title'; }
-// chapter Docs: "1.1: Title" (by part) or "01 · Chapter 1: Title" (in order)
-function numbering() { return readSettings().numbering === 'order' ? 'order' : 'part'; }
+// the Master Manuscript's name has its own choice (until one is made, the folder's)
+function masterNameBy() { const v = readSettings().masterNameBy; return NAME_BY.includes(v) ? v : nameBy(); }
 
 function status() {
   const d = getDrive();
@@ -132,7 +132,7 @@ async function handle(_e, msg) {
     case 'sync': {
       if (!d.api.connected) return { error: 'not-connected', ...status() };
       try {
-        const model = { ...msg.model, book: { ...msg.model.book, nameBy: nameBy(), numbering: numbering() } };
+        const model = { ...msg.model, book: { ...msg.model.book, nameBy: nameBy(), masterNameBy: masterNameBy() } };
         const result = await d.sync.run(model);
         d.lastSync = Date.now();
         if (d.error) { d.error = ''; rebuildMenu(); }
@@ -179,6 +179,17 @@ async function fakeOp(g, msg) {
 // (not under plain Node, where the unit tests load this file)
 if (process.versions.electron) require('electron').ipcMain.handle('neo-drive', handle);
 
+// Title | Subtitle | Title: Subtitle, kept under `key` in the settings
+function namingMenu(label, key, current) {
+  return {
+    label,
+    submenu: [['title', t('Title')], ['subtitle', t('Subtitle')], ['both', t('Title: Subtitle')]].map(([v, l]) => ({
+      label: l, type: 'radio', checked: current === v,
+      click: () => { writeSettings({ [key]: v }); rebuildMenu(); sendToWindow({ type: 'nd-syncNow', quiet: true }); }
+    }))
+  };
+}
+
 // The Google Drive menu, before Help. `rebuild` is main.js's buildMenu, so
 // the menu can show what's connected after a change.
 function extendAppMenu(template, rebuild) {
@@ -199,27 +210,8 @@ function extendAppMenu(template, rebuild) {
       { label: t('Open the Master Manuscript'), click: () => sendToWindow({ type: 'nd-open', what: 'master' }) },
       { label: t('Open This Chapter’s Google Doc'), click: () => sendToWindow({ type: 'nd-open', what: 'chapter' }) },
       { type: 'separator' },
-      {
-        label: t('Number Chapter Docs'),
-        submenu: [
-          ['part', t('By Part (1.1: Title)')],
-          ['order', t('In Order (01 · Chapter 1: Title)')]
-        ].map(([v, label]) => ({
-          label, type: 'radio', checked: numbering() === v,
-          click: () => { writeSettings({ numbering: v }); rebuildMenu(); sendToWindow({ type: 'nd-syncNow', quiet: true }); }
-        }))
-      },
-      {
-        label: t('Name Book Folders By'),
-        submenu: [
-          ['title', t('Title')],
-          ['subtitle', t('Subtitle')],
-          ['both', t('Title: Subtitle')]
-        ].map(([v, label]) => ({
-          label, type: 'radio', checked: nameBy() === v,
-          click: () => { writeSettings({ nameBy: v }); rebuildMenu(); sendToWindow({ type: 'nd-syncNow', quiet: true }); }
-        }))
-      },
+      namingMenu(t('Name Book Folders By'), 'nameBy', nameBy()),
+      namingMenu(t('Name the Master Manuscript By'), 'masterNameBy', masterNameBy()),
       { type: 'separator' },
       { label: t('Disconnect Google Drive'), click: () => disconnect() }
     );

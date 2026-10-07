@@ -37,7 +37,9 @@ The Lighthouse: Book One Deleted Chapters/ a chapter deleted in NEO goes here �
                                        Made beside the book's folder; move it anywhere you like.
 ```
 
-Prefer `01 · Chapter 1: The Keeper’s House`? **Google Drive → Number Chapter Docs → In Order.**
+Chapter Docs are numbered by part: what comes before the first part is part 0, and anything after the last part (an epilogue, an author's note) takes the number after it. A book without parts numbers its chapters as part 1: `0.1: Epigraph`, `0.2: Prologue`, `1.1: Chapter 1` … `1.100: Chapter 100`, `2.1: Epilogue`.
+
+The book's folder and the Master Manuscript can each be named by the book's title, its subtitle, or both: **Google Drive → Name Book Folders By** and **Name the Master Manuscript By**.
 
 The **chapter Docs** are set like a manuscript: Times New Roman 12, double-spaced, a bold centered heading (“Chapter 2: *Low Tide*”), `***` for scene breaks, italics and bold as you wrote them.
 

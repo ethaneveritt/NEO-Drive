@@ -6,6 +6,7 @@
 //                                    a reading copy, laid out like NEO's export
 //     Chapters/
 //       0.1: Prologue                a Doc per chapter, numbered by part
+//                                    (no parts: 0 before, 1 the chapters, 2 after)
 //       Part I: The Crossing/       a folder per part, holding its chapters
 //         1.1: The Keeper's House
 //   <book> Deleted Chapters/         beside the book's folder (move it anywhere)
@@ -145,7 +146,7 @@ class Sync {
     for (const e of model.entries) {
       const want = docWant(e);
       const where = containerOf(e);
-      const name = docName(e, book.numbering, counts, where);
+      const name = docName(e, counts);
       let c = st.chapters[e.chId];
       if (c && !listed.has(c.docId)) {
         // trashed, or this computer had the wrong id: look for it by its tag
@@ -344,7 +345,7 @@ class Sync {
         for (const b of e.blocks) add(b, e.name);
       }
     }
-    const name = bookName(book);
+    const name = bookName(book, book.masterNameBy || book.nameBy);
 
     if (st.masterId && !listed.has(st.masterId)) {
       const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'master');
@@ -483,24 +484,17 @@ function bookName(book, by = book.nameBy) {
 // The folder deleted chapters go to.
 function deletedName(book) { return `${bookName(book)} Deleted Chapters`; }
 
-// A chapter Doc's name, by the setting in the Google Drive menu:
-//   'part'  — numbered by part: 0.1: Epigraph, 0.2: Prologue, 1.1: A Dead
-//             God's House (part 1, chapter 1). e.section is the part's
-//             number (0 before the first part); e.label the chapter's title,
-//             or its name when it has none. A part's own page is n.0.
-//   'order' — numbered within its folder: 01 · Chapter 1: The Keeper's House
-function docName(e, numbering, counts, where) {
-  if (numbering === 'order' || typeof e.section !== 'number') {
-    if (e.kind === 'part') return `00 · ${e.name}`; // a part's own page heads its folder
-    const n = (counts.get(where) || 0) + 1;
-    counts.set(where, n);
-    return `${pad(n)} · ${e.name}`;
-  }
+// A chapter Doc's name, numbered by part: 0.1: Epigraph, 0.2: Prologue,
+// 1.1: The Keeper's House (part 1, chapter 1). e.section is the number the
+// window gave it (see bookModel in renderer.js); e.label the chapter's title,
+// or its name when it has none. A part's own page is n.0.
+function docName(e, counts) {
   if (e.kind === 'part') return `${e.section}.0: ${e.label || e.name}`;
-  const key = 'section ' + e.section;
+  const section = typeof e.section === 'number' ? e.section : 1;
+  const key = 'section ' + section;
   const n = (counts.get(key) || 0) + 1;
   counts.set(key, n);
-  return `${e.section}.${n}: ${e.label || e.name}`;
+  return `${section}.${n}: ${e.label || e.name}`;
 }
 
 // a chapter's headings: as the window sent them (heads), or one plain heading
