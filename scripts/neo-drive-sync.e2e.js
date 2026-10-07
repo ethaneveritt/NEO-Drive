@@ -64,6 +64,8 @@ test('the Google Drive menu sits before Help and shows the account', async () =>
   const sub = Menu.getApplicationMenu().items[at].submenu.items.map((i) => i.label);
   assert.ok(sub.includes('Connected as test@example.com'), sub.join(', '));
   assert.ok(sub.includes('Sync Now'));
+  const naming = Menu.getApplicationMenu().items[at].submenu.items.find((i) => i.label === 'Name Book Folders By');
+  assert.deepEqual(naming.submenu.items.map((i) => [i.label, i.checked]), [['Title', true], ['Subtitle', false], ['Title: Subtitle', false]]);
 });
 
 test('first sync: a folder, a Master Manuscript and a Doc per chapter', async () => {
@@ -143,6 +145,18 @@ test('an edit in the Master Manuscript is undone and shown in NEO', async () => 
   assert.ok(await js(`!!document.querySelector('.nd-master')`), 'the window shows what was undone');
   assert.match(await js(`document.querySelector('.nd-master').textContent`), /haunted house/);
   await js(`document.querySelector('.nd-master .m-ok').click()`);
+});
+
+test('Name Book Folders By → Title: Subtitle renames the folder', async () => {
+  await js(`book.subtitle = 'Book One'; saveMeta()`);
+  const { Menu } = require('electron');
+  const gd = Menu.getApplicationMenu().items.find((i) => i.label === 'Google Drive');
+  gd.submenu.items.find((i) => i.label === 'Name Book Folders By').submenu.items.find((i) => i.label === 'Title: Subtitle').click();
+  await tick(300);
+  await sync();
+  const folder = (await files()).find((f) => f.mimeType.includes('folder') && !f.appProperties.neoRole);
+  assert.equal(folder.name, 'The Lighthouse: Book One');
+  assert.equal((await master()).name, 'The Lighthouse: Book One — Master Manuscript');
 });
 
 test('a chapter deleted in NEO goes to "Deleted chapters" in Drive', async () => {

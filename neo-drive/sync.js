@@ -212,7 +212,7 @@ class Sync {
       try {
         const f = await this.api.getFile(st.folderId);
         if (f.trashed) st.folderId = null;
-        else if (f.name !== book.title) await this.api.updateFile(st.folderId, { name: book.title || 'Untitled' });
+        else if (f.name !== bookName(book)) await this.api.updateFile(st.folderId, { name: bookName(book) });
       } catch (err) {
         if (err.status !== 404) throw err;
         st.folderId = null;
@@ -222,7 +222,7 @@ class Sync {
       const found = await this.api.listFiles(`appProperties has { key='neoBook' and value='${esc(book.uuid)}' } and mimeType = '${FOLDER}' and trashed = false`);
       const mine = found.find((f) => !f.appProperties || !f.appProperties.neoRole);
       if (mine) st.folderId = mine.id;
-      else st.folderId = (await this.api.createFile({ name: book.title || 'Untitled', mimeType: FOLDER, appProperties: { neoBook: book.uuid } })).id;
+      else st.folderId = (await this.api.createFile({ name: bookName(book), mimeType: FOLDER, appProperties: { neoBook: book.uuid } })).id;
       // a new folder: forget the Docs this computer thought it knew
       if (!mine) { st.chapters = {}; st.masterId = null; st.deletedFolderId = null; }
     }
@@ -241,7 +241,7 @@ class Sync {
       if (e.heading) add({ k: headingKind(e.kind), text: e.heading }, e.name);
       for (const b of e.blocks) add(b, e.name);
     }
-    const name = `${book.title || 'Untitled'} — Master Manuscript`;
+    const name = `${bookName(book)} — Master Manuscript`;
 
     if (st.masterId && !listed.has(st.masterId)) {
       const found = [...listed.values()].find((f) => f.appProperties && f.appProperties.neoRole === 'master');
@@ -343,6 +343,18 @@ class Sync {
   }
 }
 
+// What the book's folder (and Master Manuscript) are called, by the setting
+// in the Google Drive menu: 'title' (The Lighthouse), 'subtitle' (Book One) or
+// 'both' (The Lighthouse: Book One). A book without a subtitle uses its title.
+function bookName(book, by = book.nameBy) {
+  const title = String(book.title || '').trim() || 'Untitled';
+  const sub = String(book.subtitle || '').trim();
+  if (!sub) return title;
+  if (by === 'subtitle') return sub;
+  if (by === 'both') return `${title}: ${sub}`;
+  return title;
+}
+
 function headingKind(kind) {
   if (kind === 'part') return 'part';
   if (['chapter', 'unnumbered', 'prologue', 'epilogue', 'interlude'].includes(kind)) return 'chapter';
@@ -357,4 +369,4 @@ function keyBlock(k) {
 }
 function clip(s) { return s.length > 400 ? s.slice(0, 400) + '…' : s; }
 
-module.exports = { Sync, POLL_MS };
+module.exports = { Sync, POLL_MS, bookName };

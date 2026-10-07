@@ -26,7 +26,7 @@ NEO-Drive asks Google for one permission only: **the files NEO-Drive itself crea
 
 | In NEO | In Google Drive |
 |---|---|
-| A book | A folder with the book's title |
+| A book | A folder named for the book — its title, its subtitle, or both (**Google Drive → Name Book Folders By**) |
 | The whole book | **Master Manuscript** Doc — a reading copy to share |
 | Each chapter (and part, prologue…) | Its own Doc, `01 · Chapter 1 — …`, `02 · …` |
 | Deleting a chapter | Its Doc moves to a **Deleted chapters** folder. Nothing is ever deleted. |

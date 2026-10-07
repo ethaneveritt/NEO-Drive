@@ -71,6 +71,19 @@ function getDrive() {
   return drive;
 }
 
+// NEO-Drive's own settings, in NEO's app-data folder
+function settingsFile() { return path.join(require('electron').app.getPath('userData'), 'neo-drive', 'settings.json'); }
+function readSettings() {
+  try { return JSON.parse(require('fs').readFileSync(settingsFile(), 'utf8')); } catch { return {}; }
+}
+function writeSettings(obj) {
+  const fs = require('fs');
+  fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
+  fs.writeFileSync(settingsFile(), JSON.stringify({ ...readSettings(), ...obj }));
+}
+const NAME_BY = ['title', 'subtitle', 'both'];
+function nameBy() { const v = readSettings().nameBy; return NAME_BY.includes(v) ? v : 'title'; }
+
 function status() {
   const d = getDrive();
   return {
@@ -117,7 +130,8 @@ async function handle(_e, msg) {
     case 'sync': {
       if (!d.api.connected) return { error: 'not-connected', ...status() };
       try {
-        const result = await d.sync.run(msg.model);
+        const model = { ...msg.model, book: { ...msg.model.book, nameBy: nameBy() } };
+        const result = await d.sync.run(model);
         d.lastSync = Date.now();
         if (d.error) { d.error = ''; rebuildMenu(); }
         return { ok: true, result, ...status() };
@@ -181,6 +195,18 @@ function extendAppMenu(template, rebuild) {
       { label: t('Open This Book in Google Drive'), click: () => sendToWindow({ type: 'nd-open', what: 'folder' }) },
       { label: t('Open the Master Manuscript'), click: () => sendToWindow({ type: 'nd-open', what: 'master' }) },
       { label: t('Open This Chapter’s Google Doc'), click: () => sendToWindow({ type: 'nd-open', what: 'chapter' }) },
+      { type: 'separator' },
+      {
+        label: t('Name Book Folders By'),
+        submenu: [
+          ['title', t('Title')],
+          ['subtitle', t('Subtitle')],
+          ['both', t('Title: Subtitle')]
+        ].map(([v, label]) => ({
+          label, type: 'radio', checked: nameBy() === v,
+          click: () => { writeSettings({ nameBy: v }); rebuildMenu(); sendToWindow({ type: 'nd-syncNow', quiet: true }); }
+        }))
+      },
       { type: 'separator' },
       { label: t('Disconnect Google Drive'), click: () => disconnect() }
     );

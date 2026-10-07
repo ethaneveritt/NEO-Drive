@@ -5,7 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const B = require('../neo-drive/blocks.js');
-const { Sync } = require('../neo-drive/sync.js');
+const { Sync, bookName } = require('../neo-drive/sync.js');
 const { FakeGoogle } = require('../neo-drive/fake-google.js');
 
 const p = (text, extra = {}) => B.normalize({ k: 'p', text, ...extra });
@@ -198,4 +198,25 @@ test('a Doc edited in the instant between reading and writing is not written ove
   const r = await t.sync();
   assert.strictEqual(r.conflicts.length, 1);
   assert.match(r.conflicts[0].blocks[0].text, /old house was cold/);
+});
+
+test('folder names: title, subtitle, or both', () => {
+  const b = { title: 'The Lighthouse', subtitle: 'Book One' };
+  assert.strictEqual(bookName(b, 'title'), 'The Lighthouse');
+  assert.strictEqual(bookName(b, 'subtitle'), 'Book One');
+  assert.strictEqual(bookName(b, 'both'), 'The Lighthouse: Book One');
+  assert.strictEqual(bookName({ title: 'Solo' }, 'subtitle'), 'Solo'); // no subtitle: the title
+});
+
+test('changing how folders are named renames the folder and the Master', async () => {
+  const t = setup();
+  await t.sync();
+  t.book.nameBy = 'both';
+  await t.sync();
+  const folder = t.files().find((f) => f.mimeType.includes('folder'));
+  assert.strictEqual(folder.name, 'The Lighthouse: Book One');
+  assert.strictEqual(t.master().name, 'The Lighthouse: Book One — Master Manuscript');
+  t.book.nameBy = 'subtitle';
+  await t.sync();
+  assert.strictEqual(t.files().find((f) => f.id === folder.id).name, 'Book One');
 });

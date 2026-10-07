@@ -371,8 +371,8 @@
     if (msg.type === 'nd-status') driveStatus(msg);
     if (msg.type === 'nd-open') openInDrive(msg.what);
     if (msg.type === 'nd-syncNow') {
-      if (!book) { toast(t('Open a book to sync it.')); return; }
-      driveTick(true).then((r) => { if (r && r.ok) toast(t('Synced with Google Drive.')); });
+      if (!book) { if (!msg.quiet) toast(t('Open a book to sync it.')); return; }
+      driveTick(true).then((r) => { if (r && r.ok && !msg.quiet) toast(t('Synced with Google Drive.')); });
     }
   });
 })();
