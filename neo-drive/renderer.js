@@ -82,12 +82,12 @@
     const flagged = [];
     for (const pl of plans) for (const c of pl.changes) if (c.flag) flagged.push({ p: pl.p, c });
     if (!swaps) {
-      toast(t('Every apostrophe in {chapter} already faces the right way.', { chapter: chapterLabel(chId) }));
+      toast(t('Every quote and apostrophe in {chapter} already faces the right way.', { chapter: chapterLabel(chId) }));
       return;
     }
 
     // one step back: the whole fix undoes together (structural undo stack)
-    snapshotStructure('Fix Apostrophes');
+    snapshotStructure('Fix Quotes');
     const snap = undoStack[undoStack.length - 1];
     for (const pl of plans) if (pl.changes.some((c) => c.to !== c.from)) applyToParagraph(pl.p, pl.changes);
     syncChapter(body, chId);
@@ -105,7 +105,7 @@
       const b = Math.min(text.length, f.c.index + 31);
       const before = escapeHTML((a > 0 ? '…' : '') + text.slice(a, f.c.index));
       const after = escapeHTML(text.slice(f.c.index + 1, b) + (b < text.length ? '…' : ''));
-      const what = f.c.to === '‘' ? t('opens a quote') : t('apostrophe');
+      const what = f.c.to === '‘' || f.c.to === '“' ? t('opens a quote') : t('apostrophe');
       return `<button class="fr-choice nd-flag" data-i="${i}" style="width:100%;margin-bottom:6px;text-align:left">
         <span style="display:block;font-weight:normal">${before}<span style="display:inline;font-weight:700;font-size:1.3em">${f.c.to}</span>${after}</span>
         <span style="display:block;opacity:.6;font-size:12px;font-weight:normal">${what}</span>
@@ -114,7 +114,7 @@
     const more = flagged.length > 30 ? `<p style="opacity:.6">${t('…and {n} more.', { n: flagged.length - 30 })}</p>` : '';
     bd.innerHTML = `
       <div class="modal nd-report" style="width:480px;max-height:80vh;overflow:auto">
-        <h2 style="font-size:16px">${t('Fixed {n} apostrophes in {chapter}', { n: swaps, chapter: escapeHTML(chapterLabel(chId)) })}</h2>
+        <h2 style="font-size:16px">${t('Fixed {n} quotes and apostrophes in {chapter}', { n: swaps, chapter: escapeHTML(chapterLabel(chId)) })}</h2>
         ${flagged.length ? `<p>${t('These were judgment calls. Click one to jump to it:')}</p>${rows}${more}` : ''}
         <div style="text-align:right;margin-top:14px">
           <button class="nd-undo btn-quiet" style="margin-right:10px">${t('Undo')}</button>

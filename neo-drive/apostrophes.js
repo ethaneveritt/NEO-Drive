@@ -1,8 +1,8 @@
-// NEO-Drive: "Fix Apostrophes" — turns every apostrophe and single quote in
-// a paragraph the right way. Pure string logic, no DOM, so the tests in
+// NEO-Drive: "Fix Quotes" — turns every apostrophe, single quote and double
+// quote in a paragraph the right way. Pure string logic, no DOM, so the tests in
 // scripts/neo-drive-apostrophes.test.js can load it directly.
 //
-// Every change is a one-character swap ('  ‘  ’), so a paragraph's length
+// Every change is a one-character swap ('  ‘  ’, "  “  ”), so a paragraph's length
 // never changes and the bold/italic runs around the text stay where they are.
 //
 // The rules, in English typography:
@@ -14,6 +14,13 @@
 // The one thing text alone can't settle is a ' at the start of a word NEO
 // doesn't know as an elision (dialect: 'ere, 'appen). Those are decided by
 // whether a closing mark follows in the paragraph, and flagged for review.
+//
+// Double quotes:
+//   “ at the start of a paragraph, or after a space or an opening bracket
+//   ” after a word or punctuation ("Wait," she said. / ‘crutch.’”)
+//   ” after a dash when nothing follows ("…costs double—" The fourth.)
+//   a dash then a word ("he stopped—"Wait.") is taken as opening, flagged
+// A lone " between spaces is left alone.
 (function (root) {
   'use strict';
 
@@ -32,6 +39,23 @@
   // what can stand right before an opening quotation
   const OPENER = /[\s([{“"«—–-]/u;
   const MARKS = new Set(["'", '‘', '’']);
+  const DOUBLES = new Set(['"', '“', '”']);
+  const DASH = /[—–-]/u;
+  // what can stand right before an opening double quotation
+  const D_OPENER = /[\s([{‘«]/u;
+
+  // a double quote at i: { to, flag } or null to leave it
+  function planDouble(s, i) {
+    const prev = s[i - 1] || '';
+    const next = s[i + 1] || '';
+    const ends = !next || SPACE.test(next);
+    if (!prev || D_OPENER.test(prev)) return ends ? null : { to: '“', flag: false };
+    if (DASH.test(prev)) {
+      if (ends || /[.,;:!?…)\]’”]/u.test(next)) return { to: '”', flag: false };
+      return { to: '“', flag: true };
+    }
+    return { to: '”', flag: false };
+  }
 
   const isWord = (c) => !!c && WORD.test(c);
 
@@ -62,6 +86,11 @@
     const changes = [];
     for (let i = 0; i < s.length; i++) {
       const c = s[i];
+      if (DOUBLES.has(c)) {
+        const d = planDouble(s, i);
+        if (d && (d.to !== c || d.flag)) changes.push({ index: i, from: c, to: d.to, flag: d.flag, word: '' });
+        continue;
+      }
       if (!MARKS.has(c)) continue;
       const prev = s[i - 1] || '';
       const next = s[i + 1] || '';

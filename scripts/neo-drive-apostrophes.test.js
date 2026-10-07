@@ -31,7 +31,17 @@ const cases = [
   // after a dash, a cut-off quotation closes
   ["“She said 'wait—' and stopped.”", '“She said ‘wait—’ and stopped.”'],
   // a lone mark between spaces is left alone
-  ["a ' b", "a ' b"]
+  ["a ' b", "a ' b"],
+  // double quotes
+  ['"You told me you’d give me anything," she said.', '“You told me you’d give me anything,” she said.'],
+  ['“Then let’s make a deal."', '“Then let’s make a deal.”'],
+  ['”Backwards,“ he said.', '“Backwards,” he said.'],
+  ['"…costs double—" The fourth. "—with money."', '“…costs double—” The fourth. “—with money.”'],
+  ['Essence was a sort of ‘crutch.’"', 'Essence was a sort of ‘crutch.’”'],
+  ['"He said \'go home,\' and left."', '“He said ‘go home,’ and left.”'],
+  ['("quoted")', '(“quoted”)'],
+  ['"An open quote that runs on', '“An open quote that runs on'],
+  ['a " b', 'a " b']
 ];
 
 for (const [input, want] of cases) {
@@ -51,6 +61,11 @@ test('unknown word-start with a closer opens a quotation, flagged', () => {
   assert.strictEqual(plan[0].to, '‘');
   assert.strictEqual(plan[0].flag, true);
   assert.strictEqual(plan[1].to, '’');
+});
+
+test('a dash then a word opens a double quote, flagged', () => {
+  const plan = planParagraph('He stopped—"Wait."');
+  assert.deepStrictEqual(plan.map((c) => [c.to, c.flag]), [['“', true], ['”', false]]);
 });
 
 test('length never changes', () => {
