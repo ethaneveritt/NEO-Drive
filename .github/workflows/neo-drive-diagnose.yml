@@ -10,6 +10,10 @@ on:
       tag:
         description: Release tag to test (e.g. v1.4.4)
         required: true
+      repo:
+        description: Repository the release is in
+        required: false
+        default: ethaneveritt/NEO-Drive
 
 permissions:
   contents: read
@@ -24,7 +28,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ inputs.tag }}"
-          gh release download $tag -R ${{ github.repository }} -p "NEO-Setup-*.exe" -D dl
+          gh release download $tag -R "${{ inputs.repo }}" -p "NEO-Setup-*.exe" -D dl
           $setup = Get-ChildItem dl -Filter "NEO-Setup-*.exe" | Select-Object -First 1
           Start-Process $setup.FullName -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 5
@@ -34,14 +38,14 @@ jobs:
           Write-Output "::notice::Installed at $($exe.FullName)"
           $env:ELECTRON_ENABLE_LOGGING = "1"
           $env:ELECTRON_ENABLE_STACK_DUMPING = "1"
-          $p = Start-Process $exe.FullName -ArgumentList "--enable-logging" -RedirectStandardOutput out.txt -RedirectStandardError err.txt -PassThru
+          $p = Start-Process $exe.FullName -ArgumentList "--enable-logging=file","--log-file=$PWD\\chrome.log","--v=0" -RedirectStandardOutput out.txt -RedirectStandardError err.txt -PassThru
           Start-Sleep -Seconds 25
           $alive = -not $p.HasExited
           $code = if ($p.HasExited) { $p.ExitCode } else { "still running" }
           Write-Output "::notice::NEO alive after 25s: $alive (exit: $code)"
           $lib = Test-Path "$env:USERPROFILE\Documents\NEO Library\library.json"
           Write-Output "::notice::Library created: $lib"
-          foreach ($f in @("out.txt", "err.txt", "$env:USERPROFILE\Documents\NEO Library\neo-errors.log")) {
+          foreach ($f in @("out.txt", "err.txt", "chrome.log", "$env:APPDATA\\NEO\\neo-errors.log", "$env:USERPROFILE\Documents\NEO Library\neo-errors.log")) {
             if (Test-Path $f) {
               $lines = Get-Content $f -Tail 60 | Where-Object { $_ -notmatch "dbus|gpu_init|DevTools" }
               $text = ($lines -join " | ")
