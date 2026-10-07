@@ -447,6 +447,27 @@ test('Notes folder: Notepad and Chapter Notes go both ways; Darlings is a copy',
   assert.doesNotMatch(t.g.docText(dl), /Oops/);
 });
 
+test('notes keep their blank lines, both ways', async () => {
+  const t = setup();
+  const notes = { notepad: [p('First note.'), p(''), p(''), p('Second note.'), p('')], chapters: { c1: 'Rain.\n\nCold.' }, darlings: [] };
+  await t.sync({ notes });
+  const doc = (key) => t.files().find((f) => f.appProperties.neoNote === key).id;
+  assert.match(t.g.docText(doc('notepad')), /^First note\.\n\n\nSecond note\.\n/);
+  assert.match(t.g.docText(doc('chapternotes')), /1\.1: Cold Front\nRain\.\n\nCold\.\n/);
+  // nothing changed: nothing written, nothing pulled
+  const r0 = await t.sync({ notes, force: true });
+  assert.deepStrictEqual([r0.notesPulls, r0.notesConflicts], [{}, {}]);
+  // a gap made in Docs comes back
+  const np = doc('notepad');
+  await t.g.typeInDoc(np, t.g.findText(np, 'Second'), 'Third note.\n\n');
+  const r = await t.sync({ notes, force: true });
+  assert.deepStrictEqual(r.notesPulls.notepad.map((b) => b.text), ['First note.', '', '', 'Third note.', '', 'Second note.']);
+  const cn = doc('chapternotes');
+  await t.g.typeInDoc(cn, t.g.findText(cn, 'Cold.'), 'Wet.\n\n');
+  const r2 = await t.sync({ notes: { ...notes, notepad: r.notesPulls.notepad }, force: true });
+  assert.strictEqual(r2.notesPulls.chapternotes.c1, 'Rain.\n\nWet.\n\nCold.');
+});
+
 test('notes edited in NEO and in Docs at once: both kept', async () => {
   const t = setup();
   const notes = { notepad: [p('One.')], chapters: {}, darlings: [] };

@@ -122,7 +122,9 @@
   // Suggested insertions take up room too, but are not the writer's text
   // yet, so they stay out of the block; `map` turns a block offset back
   // into a Doc index.
-  function readDoc(doc) {
+  // keepEmpty: blank lines are paragraphs too (the notes Docs, where a gap
+  // between notes matters); the Doc's last, empty paragraph never is.
+  function readDoc(doc, opts = {}) {
     const content = (doc && doc.body && doc.body.content) || [];
     const paras = [];
     for (const el of content) {
@@ -165,18 +167,19 @@
         if (flags[i]) marks.push([i, j, flags[i]]);
         i = j;
       }
-      const block = text.trim() === '' && k !== 'brk' ? null : normalize({
+      const block = text.trim() === '' && k !== 'brk' && !(opts.keepEmpty && text === '') ? null : normalize({
         k, text, marks, align, ind,
         pb: !!ps.pageBreakBefore, sa: mag(ps.spaceAbove), sb: mag(ps.spaceBelow),
         sz: sz || SIZE, ls: ps.lineSpacing || 100
       });
       paras.push({ start: el.startIndex, end: el.endIndex, text, map, block });
     }
+    if (opts.keepEmpty && paras.length && paras[paras.length - 1].text === '') paras[paras.length - 1].block = null;
     const end = paras.length ? paras[paras.length - 1].end : 2;
     return { paras, blocks: paras.filter((p) => p.block).map((p) => p.block), end };
   }
   const mag = (d) => (d && d.magnitude) || 0;
-  const fromDoc = (doc) => readDoc(doc).blocks;
+  const fromDoc = (doc, opts) => readDoc(doc, opts).blocks;
 
   // ------------------------------------------------------------ styling
   function paraStyleRequest(b, start, end) {
@@ -263,9 +266,9 @@
   // still the Doc's own. The Doc keeps an empty paragraph at its very end:
   // Google never lets the last newline go, and with nothing written in that
   // last paragraph, no edit ever has to.
-  function editRequests(doc, want) {
+  function editRequests(doc, want, profile) {
     want = want.map(normalize);
-    const rd = readDoc(doc);
+    const rd = readDoc(doc, { keepEmpty: profile === 'notes' });
     const requests = [];
     const lastPara = rd.paras[rd.paras.length - 1];
     if (!lastPara || lastPara.text !== '') {
@@ -323,8 +326,8 @@
   }
 
   // A new, empty Doc ({body: one empty paragraph}) filled with `want`.
-  function fillRequests(want) {
-    return editRequests({ body: { content: [{ startIndex: 0, endIndex: 1, sectionBreak: {} }, { startIndex: 1, endIndex: 2, paragraph: { elements: [{ startIndex: 1, endIndex: 2, textRun: { content: '\n' } }] } }] } }, want);
+  function fillRequests(want, profile) {
+    return editRequests({ body: { content: [{ startIndex: 0, endIndex: 1, sectionBreak: {} }, { startIndex: 1, endIndex: 2, paragraph: { elements: [{ startIndex: 1, endIndex: 2, textRun: { content: '\n' } }] } }] } }, want, profile);
   }
 
   // ------------------------------------------------------------- to HTML

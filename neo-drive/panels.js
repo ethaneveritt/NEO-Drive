@@ -290,12 +290,64 @@
         end();
         if (n.querySelector('p')) n.querySelectorAll('p').forEach((p) => out.appendChild(p.cloneNode(true)));
         else para(n.innerHTML);
-      } else if (n.nodeType === 1 && n.tagName === 'BR') end();
+      } else if (n.nodeType === 1 && n.tagName === 'BR') { if (loose) end(); else para(''); }
       else { if (!loose) loose = document.createElement('p'); loose.appendChild(n); }
     }
     end();
-    return parasFromHtml(out.innerHTML).map((p) => window.NeoDriveBlocks.fromNeoPara(p));
+    // a blank line is a paragraph too: the gaps between notes are kept
+    const blocks = [];
+    for (const p of out.children) {
+      if (!p.textContent.replace(/\u00a0/g, ' ').trim()) { blocks.push({ k: 'p', text: '' }); continue; }
+      for (const x of parasFromHtml(p.outerHTML)) blocks.push(window.NeoDriveBlocks.fromNeoPara(x));
+    }
+    while (blocks.length && !blocks[0].text) blocks.shift();
+    while (blocks.length && !blocks[blocks.length - 1].text) blocks.pop();
+    return blocks;
   }
+
+  // Pasting into the Notepad (here or on the Notes tab) keeps the blank
+  // lines between notes. NEO's own paste cleaning closes them up, which
+  // suits a manuscript, so each gap is held by a marker through it.
+  const GAP = '\uE001';
+  function gapHtml(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const BLOCK = /^(P|DIV|LI|H[1-6]|BLOCKQUOTE|PRE|SECTION|ARTICLE|UL|OL|TABLE)$/;
+    for (const el of [...doc.body.querySelectorAll('p, div, li, h1, h2, h3, h4, h5, h6')]) {
+      if (!el.textContent.replace(/\u00a0/g, ' ').trim() && !el.querySelector('p, div, li')) el.textContent = GAP;
+    }
+    // a <br> between blocks (how Google Docs copies a blank line), or a second one in a row
+    for (const br of [...doc.body.querySelectorAll('br')]) {
+      let prev = br.previousSibling;
+      while (prev && prev.nodeType === 3 && !prev.data.trim()) prev = prev.previousSibling;
+      if (prev && prev.nodeType === 1 && (BLOCK.test(prev.tagName) || prev.tagName === 'BR')) {
+        const p = doc.createElement('p');
+        p.textContent = GAP;
+        br.replaceWith(p);
+      }
+    }
+    return doc.body.innerHTML;
+  }
+  function pasteNotes(e) {
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    if (!html && !text) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    let out;
+    if (html) {
+      out = cleanPasteHtml(gapHtml(html));
+      if (out.includes(GAP)) out = out.split(`<p>${GAP}</p>`).join('<p><br></p>').split(GAP).join('');
+    } else {
+      const lines = text.replace(/\r/g, '').split('\n');
+      out = lines.length === 1 ? esc(lines[0]) : lines.map((l) => (l.trim() ? `<p>${esc(l)}</p>` : '<p><br></p>')).join('');
+    }
+    if (out) document.execCommand('insertHTML', false, out);
+  }
+  // the Notes tab's Notepad: ahead of NEO's own paste
+  document.addEventListener('paste', (e) => {
+    const ed = e.target && e.target.closest && e.target.closest('#aux-editor');
+    if (ed && ed.dataset.kind === 'notes') pasteNotes(e);
+  }, true);
   const padToHtml = (blocks) => blocks.map((b) => window.NeoDriveBlocks.toNeoHtml({ ...b, ind: 'normal', ls: 200 })).join('');
 
   // ------------------------------------------------------------ the panel
@@ -324,13 +376,7 @@
         clearTimeout(padTimer);
         padTimer = setTimeout(savePad, 800);
       });
-      box.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const html = e.clipboardData.getData('text/html');
-        const text = e.clipboardData.getData('text/plain');
-        if (html) document.execCommand('insertHTML', false, cleanPasteHtml(html));
-        else if (text) document.execCommand('insertText', false, text.replace(/\r/g, ''));
-      });
+      box.addEventListener('paste', pasteNotes);
       box.addEventListener('blur', savePad);
     } else {
       panel.innerHTML = '';
@@ -901,6 +947,9 @@
     const own = window.switchTab;
     window.switchTab = function (name) {
       if (mode === 'notepad') savePad();
+      // leaving the Notes page: what it holds is the newest Notepad
+      const ed = $('#aux-editor');
+      if (book && currentTab === 'notes' && ed.dataset.kind === 'notes' && ed.dataset.book === book.id && forBook === book.id) notepadDisk = ed.innerHTML;
       const r = own.apply(this, arguments);
       try {
         const onNotes = currentTab === 'notes';

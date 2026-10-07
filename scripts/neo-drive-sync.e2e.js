@@ -340,6 +340,36 @@ test('notes written in the Docs come back into NEO', async () => {
   await tick(200);
 });
 
+test('pasting notes into the Notepad keeps the blank lines between them, in NEO and in the Doc', async () => {
+  await js(`switchTab('notes')`);
+  await tick(400);
+  const paste = (html, text) => js(`(() => {
+    const ed = document.getElementById('aux-editor');
+    ed.focus();
+    const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false);
+    getSelection().removeAllRanges(); getSelection().addRange(r);
+    document.execCommand('insertParagraph');
+    const dt = new DataTransfer();
+    if (${JSON.stringify(html)}) dt.setData('text/html', ${JSON.stringify(html)});
+    dt.setData('text/plain', ${JSON.stringify(text)});
+    ed.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  })()`);
+  // as Google Docs copies it: a <br> between paragraphs for each blank line
+  await paste('<meta charset="utf-8"><b style="font-weight:normal"><p>Note A</p><br><p>Note <i>B</i></p><br><br><p>Note C</p></b>', 'Note A\n\nNote B\n\n\nNote C');
+  // plain text
+  await paste('', 'Note D\n\nNote E');
+  await tick(1200);
+  const paras = await js(`[...document.getElementById('aux-editor').querySelectorAll('p')].map((p) => p.textContent)`);
+  const from = paras.indexOf('Note A');
+  assert.deepEqual(paras.slice(from), ['Note A', '', 'Note B', '', '', 'Note C', 'Note D', '', 'Note E'].filter((x, i, l) => !(x === '' && l[i - 1] === 'Note C')), JSON.stringify(paras));
+  assert.equal(await js(`document.getElementById('aux-editor').querySelector('i').textContent`), 'B');
+  await js(`switchTab('manuscript')`);
+  await tick(300);
+  await sync();
+  const pad = await fake({ do: 'noteDoc', key: 'notepad' });
+  assert.match(await fake({ do: 'text', id: pad.id }), /Note A\n\nNote B\n\n\nNote C\n+Note D\n\nNote E\n/);
+});
+
 test('the dock: NEO\'s Notes & Comments pane gives way to it; it tucks into the edge; the page makes room, and narrows in a small window', async () => {
   assert.equal(await js(`getComputedStyle(document.getElementById('side-pane')).display`), 'none');
   assert.equal(await js(`getComputedStyle(document.getElementById('side-hotzone')).display`), 'none');
