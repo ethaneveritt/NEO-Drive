@@ -907,6 +907,17 @@ ipcMain.handle('fullscreen:escape', (e) => {
 // A script prints on US letter whatever the country (the industry's page),
 // with the margins laid out in the page itself
 const SCREENPLAY_PRINT = { pageSize: 'Letter', margins: { top: 0, bottom: 0, left: 0, right: 0 }, printBackground: false, preferCSSPageSize: true, generateTaggedPDF: true, generateDocumentOutline: false };
+// Letter is a habit of the Americas (and the Philippines); most of the world
+// prints A4. The computer's region decides, for the PDF and the Word file
+// alike. (A script is Letter everywhere: SCREENPLAY_PRINT.)
+const LETTER_COUNTRIES = ['US', 'CA', 'MX', 'PH', 'CL', 'CO', 'VE', 'GT', 'CR', 'PA', 'DO', 'PR', 'SV', 'HN', 'NI', 'BZ'];
+function paperSize() {
+  let cc = '';
+  try { cc = app.getLocaleCountryCode() || ''; } catch { /* unknown */ }
+  return LETTER_COUNTRIES.includes(cc.toUpperCase()) ? 'Letter' : 'A4';
+}
+ipcMain.on('paper:get', (e) => { e.returnValue = paperSize(); });
+
 async function renderPDF(html, print) {
   // The book reaches the PDF printer as a file, not as a data: URL. A URL
   // stops at 2 MB, and a long novel is bigger than that once it's encoded; a
@@ -916,10 +927,8 @@ async function renderPDF(html, print) {
   const tmp = path.join(app.getPath('temp'), `neo-print-${process.pid}-${Date.now()}.html`);
   fs.writeFileSync(tmp, html, 'utf8');
   const pdfWin = new BrowserWindow({ show: false, webPreferences: { sandbox: true } });
-  // Letter is a North American habit; most of the world prints A4.
-  const letterCountries = ['US', 'CA', 'MX', 'PH'];
   const options = print === 'screenplay' ? SCREENPLAY_PRINT : {
-    pageSize: letterCountries.includes(app.getLocaleCountryCode()) ? 'Letter' : 'A4',
+    pageSize: paperSize(),
     margins: { top: 1, bottom: 1, left: 1, right: 1 },
     printBackground: false,
     // chapter headings become the PDF's bookmarks, for jumping around in
@@ -1628,6 +1637,12 @@ function createWindow() {
     if (!params.isEditable && !params.selectionText) return;
     const can = params.editFlags || {};
     const items = [];
+    // a line of a script: a page can start there
+    const line = scriptContext;
+    scriptContext = null;
+    if (params.isEditable && line) {
+      items.push({ label: line.pageBreak ? t('Remove Page Break') : t('Page Break Here'), click: () => sendToWindow({ type: 'scriptPageBreak' }) }, { type: 'separator' });
+    }
     if (params.isEditable) items.push({ role: 'cut', label: t('Cut'), enabled: !!can.canCut });
     items.push({ role: 'copy', label: t('Copy'), enabled: !!can.canCopy });
     if (params.isEditable) items.push({ role: 'paste', label: t('Paste'), enabled: !!can.canPaste });
@@ -1790,12 +1805,19 @@ let poetryState = false;
 let flushState = false;
 // A script open in the window: the Format menu offers its elements (the
 // keys are the editor's own, ⌘1–⌘7), and Export its two ways out
-let scriptState = { on: false, element: null };
+let scriptState = { on: false, element: null, underline: false, contd: true };
 const SCRIPT_ELEMENTS = ['heading', 'action', 'character', 'paren', 'dialogue', 'transition', 'shot'];
+// the script line a right-click is on: { pageBreak } (whether it starts a
+// page already), or null when the click wasn't on one
+let scriptContext = null;
+ipcMain.on('script:context', (e, st) => {
+  scriptContext = st && typeof st === 'object' ? { pageBreak: !!st.pageBreak } : null;
+  e.returnValue = true;
+});
 ipcMain.on('script:state', (_e, st) => {
   st = st || {};
-  const next = { on: !!st.on, element: SCRIPT_ELEMENTS.includes(st.element) ? st.element : null };
-  if (next.on === scriptState.on && next.element === scriptState.element) return;
+  const next = { on: !!st.on, element: SCRIPT_ELEMENTS.includes(st.element) ? st.element : null, underline: !!st.underline, contd: st.contd !== false };
+  if (next.on === scriptState.on && next.element === scriptState.element && next.underline === scriptState.underline && next.contd === scriptState.contd) return;
   scriptState = next;
   try { buildMenu(); } catch (err) { logError('menu', err); }
 });
@@ -2051,6 +2073,12 @@ function buildMenu() {
           checked: scriptState.element === value,
           click: () => sendToWindow({ type: 'scriptElement', value })
         })) : []),
+        // the script's own style, kept with that script
+        ...(scriptState.on ? [
+          { type: 'separator' },
+          { label: t('Underline Scene Headings'), type: 'checkbox', checked: scriptState.underline, click: () => sendToWindow({ type: 'scriptStyle', value: 'underline' }) },
+          { label: t('(CONT\'D) for a Returning Speaker'), type: 'checkbox', checked: scriptState.contd, click: () => sendToWindow({ type: 'scriptStyle', value: 'contd' }) }
+        ] : []),
         {
           visible: !scriptState.on,
           label: t('Flush Paragraph') + '\t' + (isMac ? '⇧Enter' : 'Shift+Enter'),
