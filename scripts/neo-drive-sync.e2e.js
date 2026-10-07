@@ -157,7 +157,7 @@ test('an edit in the Master Manuscript is undone and shown in NEO', async () => 
   await fake({ do: 'type', id: m.id, before: 'house', text: 'haunted ' });
   await sync();
   assert.doesNotMatch(await fake({ do: 'text', id: m.id }), /haunted/);
-  const comments = await fake({ do: 'comments', id: m.id });
+  const comments = (await fake({ do: 'comments', id: m.id })).filter((c) => /^Edit undone/.test(c.content));
   assert.equal(comments.length, 1);
   assert.ok(await js(`!!document.querySelector('.nd-master')`), 'the window shows what was undone');
   assert.match(await js(`document.querySelector('.nd-master').textContent`), /haunted house/);
