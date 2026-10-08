@@ -514,8 +514,8 @@
     if (prefs.asked || prefs.voice === 'system') return true;
     const choice = await ask(
       t('Natural voices for Read Aloud'),
-      t('NEO-Drive can read your book in a natural, audiobook-like voice (Kokoro). It runs entirely on this computer — nothing you write is sent anywhere — and it’s free. It’s a one-time 125 MB download.'),
-      [['later', t('Use this computer’s voice')], ['get', t('Download (125 MB)')]]);
+      t('NEO-Drive can read your book in a natural, audiobook-like voice (Kokoro). It runs entirely on this computer — nothing you write is sent anywhere — and it’s free. It’s a one-time download of about 120 MB.'),
+      [['later', t('Use this computer’s voice')], ['get', t('Download (about 120 MB)')]]);
     prefs = { ...prefs, ...(await call({ op: 'setReadPrefs', asked: true })) };
     if (choice !== 'get') return true;
     return getVoices();
@@ -538,7 +538,7 @@
     const bd = document.createElement('div');
     bd.className = 'modal-backdrop';
     bd.innerHTML = `<div class="modal nd-voices-modal" style="width:440px"><h2 style="font-size:16px">${esc(t('Downloading natural voices'))}</h2>
-      <p class="msg">${esc(t('About 125 MB, once. You can keep writing.'))}</p><div class="bar"><div></div></div><p class="soft n" style="margin:0"></p>
+      <p class="msg">${esc(t('About 120 MB, once. You can keep writing.'))}</p><div class="bar"><div></div></div><p class="soft n" style="margin:0"></p>
       <div style="text-align:right;margin-top:14px"><button class="btn-quiet cancel">${esc(t('Cancel'))}</button> <button class="btn-gold hide" style="margin-left:8px">${esc(t('Hide'))}</button></div></div>`;
     document.body.appendChild(bd);
     progressModal = bd;
