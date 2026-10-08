@@ -15,7 +15,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PACK = {
-  base: 'https://github.com/ethaneveritt/NEO-Drive/releases/download/kokoro-voices-4/',
+  base: 'https://github.com/ethaneveritt/NEO-plus/releases/download/kokoro-voices-4/',
   manifestSha256: '273c42f4d53f21e13bf3af864f411501442a4059c00494edc28a7dc4a33ecd6a'
 };
 const PLATFORM = process.platform + '-' + process.arch;

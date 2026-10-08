@@ -25,6 +25,6 @@ Disconnect Google Drive inside NEO+, or remove NEO+ at <https://myaccount.google
 
 ## Contact
 
-Ethan Everitt — via <https://github.com/ethaneveritt/NEO-Drive/issues>
+Ethan Everitt — via <https://github.com/ethaneveritt/NEO-plus/issues>
 
 Last updated: October 6, 2026

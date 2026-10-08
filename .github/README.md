@@ -4,11 +4,11 @@
 
 Every book you write in NEO gets a folder in your Google Drive, a Master Manuscript Google Doc you can share for comments, and a Google Doc for each chapter. They stay in step with NEO as you write, and edits you make to a chapter Doc (on your phone, say) come back into NEO.
 
-> NEO+ is an unofficial build by [Ethan Everitt](https://github.com/ethaneveritt). NEO itself is Hugh Howey's work, MIT-licensed; every release of NEO is merged in here automatically. Please send NEO+ problems [here](https://github.com/ethaneveritt/NEO-Drive/issues), not to Hugh.
+> NEO+ is an unofficial build by [Ethan Everitt](https://github.com/ethaneveritt). NEO itself is Hugh Howey's work, MIT-licensed; every release of NEO is merged in here automatically. Please send NEO+ problems [here](https://github.com/ethaneveritt/NEO-plus/issues), not to Hugh.
 
 ## Install (Windows)
 
-1. Download **NEO-Plus-Setup-*.exe** from the [latest release](https://github.com/ethaneveritt/NEO-Drive/releases/latest).
+1. Download **NEO-Plus-Setup-*.exe** from the [latest release](https://github.com/ethaneveritt/NEO-plus/releases/latest).
 2. Run it. If Windows says "Windows protected your PC", click **More info → Run anyway** (the installer isn't signed with a paid certificate).
 3. That's it. It installs over plain NEO if you have it, and keeps your library, books and settings exactly as they were.
 

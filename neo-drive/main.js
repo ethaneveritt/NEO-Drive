@@ -50,7 +50,7 @@ function extendTextMenu(items, params, win) {
 // Where this build's releases live. The auto-updater itself is pointed here
 // at build time (.github/workflows/neo-drive.yml); this is the "see the
 // release on GitHub" fallback in main.js.
-const RELEASES_REPO = 'ethaneveritt/NEO-Drive';
+const RELEASES_REPO = 'ethaneveritt/NEO-plus';
 const LATEST_RELEASE_API = `https://api.github.com/repos/${RELEASES_REPO}/releases/latest`;
 
 // ------------------------------------------------------------ Google Drive
