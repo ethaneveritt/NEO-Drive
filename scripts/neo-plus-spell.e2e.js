@@ -27,6 +27,9 @@ BrowserWindow.prototype.loadFile = function (file, opts) {
   return loadFile.call(this, path.resolve(__dirname, '..', file), opts);
 };
 require('../main.js');
+// macOS opens a context menu as a modal loop that waits for a person to
+// close it; the test only needs what the menu was built from
+if (process.platform === 'darwin') Menu.prototype.popup = function () {};
 
 const say = (kind, msg) => console.log(process.env.GITHUB_ACTIONS ? `::${kind}::${msg}` : `${kind}: ${msg}`);
 let wc;
