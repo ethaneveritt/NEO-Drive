@@ -463,6 +463,8 @@
 
   // NEO+ (this build) in the window's title
   if (document.title === 'NEO') document.title = 'NEO+';
+  const shelfMark = document.querySelector('#shelf-header h1');
+  if (shelfMark && shelfMark.textContent.trim() === 'NEO') shelfMark.textContent = 'NEO+';
 
   if (window.neo.neoDrive && DB) {
     window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) { drive = { ...drive, ...s }; if (Panels) Panels.setConnected(drive.connected); } }).catch(() => {});

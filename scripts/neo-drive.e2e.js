@@ -95,6 +95,47 @@ test('right-click Bold sets the selection in bold', async () => {
   assert.match(await js(`document.querySelector('.chapter-body p').innerHTML`), /<(b|strong)>/);
 });
 
+// a picture with no lettering, as the cover art of the book on the shelf
+test('a cover image of your own can carry the title, subtitle and author, in a style you can change', async () => {
+  const bookId = await js('book.id');
+  const png = await js(`(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 600; const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, 600); g.addColorStop(0, '#203a5a'); g.addColorStop(1, '#c97b3a'); x.fillStyle = g; x.fillRect(0, 0, 400, 600);
+    return c.toDataURL('image/png').split(',')[1]; })()`);
+  const dir = fs.readdirSync(LIB).find((n) => n.startsWith('book-'));
+  fs.writeFileSync(path.join(LIB, dir, 'cover-1700000000.png'), Buffer.from(png, 'base64'));
+  await js(`(async () => { book.coverImage = 'cover-1700000000.png'; book.coverMode = 'image'; book.subtitle = 'Book One'; book.title = 'The Lighthouse'; book.author = 'Test Writer'; await saveMeta(); await backToShelf(); })()`);
+  await tick(1200);
+  const tile = `document.querySelector('.book[data-book-id="${bookId}"]')`;
+  assert.equal(await js(`${tile}.classList.contains('has-cover')`), true, 'just the image at first');
+  // ↻ → Add the title, subtitle and author
+  const pickChoice = async (label) => {
+    await tick(300);
+    await js(`[...document.querySelectorAll('.modal .fr-choice')].find((b) => b.textContent.includes(${JSON.stringify(label)})).click()`);
+    await tick(1200);
+  };
+  await js(`${tile}.querySelector('.b-refresh').click()`);
+  await pickChoice('Add the title, subtitle and author');
+  assert.equal(await js(`${tile}.classList.contains('has-cover')`), false);
+  assert.match(await js(`${tile}.querySelector('.b-title').textContent`), /Lighthouse.*Book One/is);
+  assert.equal(await js(`getComputedStyle(${tile}.querySelector('.b-text')).display`) !== 'none', true);
+  const tpl = () => js(`[...${tile}.classList].find((c) => c.startsWith('cv-') && !/light|dark|scrim|au-|painting/.test(c))`);
+  const first = await tpl();
+  if (process.env.SHOT) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-cover.png'), (await wc.capturePage()).toPNG());
+  await js(`${tile}.querySelector('.b-refresh').click()`);
+  await pickChoice('A different title style');
+  assert.notEqual(await tpl(), first, 'another style');
+  const saved = JSON.parse(fs.readFileSync(path.join(LIB, dir, 'book.json'), 'utf8'));
+  assert.equal(saved.ndType, true);
+  // the exported cover (EPUB, PDF) carries the type too
+  const ex = await js(`exportCover({ id: '${bookId}', coverImage: 'cover-1700000000.png', title: 'The Lighthouse', author: 'Test Writer' }).then((c) => c.mime)`);
+  assert.equal(ex, 'image/jpeg');
+  await js(`${tile}.querySelector('.b-refresh').click()`);
+  await pickChoice('Just the image');
+  assert.equal(await js(`${tile}.classList.contains('has-cover')`), true);
+  await js(`openBook('${bookId}')`);
+  await tick(800);
+});
+
 async function main() {
   await app.whenReady();
   let failed = 0;
