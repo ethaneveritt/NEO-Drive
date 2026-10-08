@@ -1,14 +1,13 @@
 // NEO-Drive: natural voices for Read Aloud (main process).
 //
 // The voices are Kokoro-82M (Apache-2.0), a small open neural voice model,
-// run entirely on this computer by ONNX Runtime's WebAssembly build inside a
-// hidden window. Nothing is sent anywhere: the hidden window's network is
-// this file's request handler, which answers only with the voice files on
-// disk.
+// run entirely on this computer by ONNX Runtime in a helper process
+// (tts/engine.js). Nothing is sent anywhere.
 //
-// The voice files (~125 MB) are not in the installer. "Download Natural
-// Voices" fetches them once from this repo's kokoro-voices release; every
-// file is checked against manifest.json, whose own SHA-256 is pinned below.
+// The voice files (about 120 MB) are not in the installer. "Download Natural
+// Voices" fetches them once from this repo's kokoro-voices release (only
+// this computer's platform's runtime); every file is checked against
+// manifest.json, whose own SHA-256 is pinned below.
 'use strict';
 
 const fs = require('fs');
@@ -16,13 +15,12 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PACK = {
-  base: 'https://github.com/ethaneveritt/NEO-Drive/releases/download/kokoro-voices-1/',
-  manifestSha256: 'c8248b10baddab59013ee384940384a1a2fe60a257d369567ff3baf2e3ad9987',
-  model: 'onnx-community/Kokoro-82M-v1.0-ONNX'
+  base: 'https://github.com/ethaneveritt/NEO-Drive/releases/download/kokoro-voices-2/',
+  manifestSha256: '18c283c8c92ab7c9311623d81a7fae901395d9b37f97fd5dee9ad5ca840f4124'
 };
-const ENGINE_HOST = 'neo-tts.local';
-const VENDOR = path.join(__dirname, 'vendor');
-const ENGINE_DIR = path.join(__dirname, 'tts');
+const PLATFORM = process.platform + '-' + process.arch;
+// the pack's files this computer needs: everything but other platforms' runtimes
+const mine = (f) => !f.platform || f.platform === PLATFORM;
 
 // The voices, by the names people know them by (Kokoro's own names, plus
 // accent and voice). American and British English.
@@ -67,7 +65,7 @@ class Voices {
   installed() {
     const m = this.manifest();
     if (!m) return false;
-    return m.files.every((f) => {
+    return m.files.filter(mine).every((f) => {
       try { return fs.statSync(path.join(this.dir, f.path)).size === f.size; } catch { return false; }
     });
   }
@@ -96,8 +94,10 @@ class Voices {
       const mbuf = Buffer.from(await mres.arrayBuffer());
       if (sha256(mbuf) !== PACK.manifestSha256) throw new Error('the voice list didn’t match what NEO-Drive expects');
       const m = JSON.parse(mbuf.toString('utf8'));
-      this.download.total = m.files.reduce((n, f) => n + f.size, 0);
-      for (const f of m.files) {
+      if (!m.files.some((f) => f.platform === PLATFORM)) throw new Error('natural voices aren’t available for this kind of computer yet');
+      const files = m.files.filter(mine);
+      this.download.total = files.reduce((n, f) => n + f.size, 0);
+      for (const f of files) {
         if (!/^[\w./-]+$/.test(f.path) || f.path.includes('..')) throw new Error('bad path in manifest');
         const dest = path.join(tmp, f.path);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -152,85 +152,43 @@ class Voices {
   }
 
   // -------------------------------------------------------------- engine
-  // A hidden window whose every request is answered from disk: the page and
-  // the Kokoro bundle from the app, the model, voices and ONNX Runtime from
-  // the downloaded pack. COOP/COEP make it cross-origin isolated, so ONNX
-  // Runtime can use several threads.
+  // A helper process (Electron's utilityProcess) that loads the model once
+  // and answers one request at a time.
   startEngine() {
     if (this.ready) return this.ready;
-    const { BrowserWindow, session, ipcMain } = require('electron');
-    const m = this.manifest();
-    if (!m) return Promise.reject(new Error('Natural voices aren’t downloaded.'));
-    const files = new Map(m.files.map((f) => [f.path, path.join(this.dir, f.path)]));
-    const ses = session.fromPartition('neo-tts');
-    const headers = (type) => ({
-      'Content-Type': type,
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Resource-Policy': 'cross-origin',
-      'Access-Control-Allow-Origin': '*'
-    });
-    const typeOf = (f) => (/\.m?js$/.test(f) ? 'text/javascript' : /\.html$/.test(f) ? 'text/html' : /\.json$/.test(f) ? 'application/json' : /\.wasm$/.test(f) ? 'application/wasm' : 'application/octet-stream');
-    const serve = (file) => {
-      try { return new Response(fs.readFileSync(file), { headers: headers(typeOf(file)) }); } catch { return new Response('not found', { status: 404 }); }
-    };
-    if (!this.handled) {
-      this.handled = true;
-      ses.protocol.handle('https', (req) => {
-        const u = new URL(req.url);
-        if (u.host === ENGINE_HOST) {
-          if (u.pathname === '/engine.html') return serve(path.join(ENGINE_DIR, 'engine.html'));
-          if (u.pathname === '/engine.js') return serve(path.join(ENGINE_DIR, 'engine.js'));
-          if (u.pathname === '/kokoro.web.js') return serve(path.join(VENDOR, 'kokoro.web.js'));
-          if (u.pathname.startsWith('/ort/')) return serve(files.get('ort/' + u.pathname.slice(5)) || '');
-        }
-        // the model's own files, by their path in the model repository
-        const at = u.pathname.indexOf('/resolve/');
-        if (at >= 0) {
-          const rel = u.pathname.slice(at + '/resolve/'.length).split('/').slice(1).join('/');
-          if (files.has(rel)) return serve(files.get(rel));
-        }
-        return new Response('offline', { status: 404 });
-      });
-      ses.protocol.handle('http', () => new Response('offline', { status: 404 }));
-      ipcMain.on('neo-tts-done', (_e, id, result) => {
-        const job = this.jobs.get(id);
-        if (job) { this.jobs.delete(id); job(result); }
-      });
-    }
+    if (!this.installed()) return Promise.reject(new Error('Natural voices aren’t downloaded.'));
+    const { utilityProcess } = require('electron');
     this.ready = new Promise((resolve, reject) => {
-      const win = new BrowserWindow({
-        show: false,
-        webPreferences: {
-          partition: 'neo-tts', sandbox: true, contextIsolation: true, backgroundThrottling: false,
-          preload: path.join(ENGINE_DIR, 'engine-preload.js')
-        }
+      let child;
+      try {
+        child = utilityProcess.fork(path.join(__dirname, 'tts', 'engine.js'), [], { serviceName: 'NEO voices' });
+      } catch (err) { reject(err); return; }
+      this.engine = child;
+      child.on('message', (m) => {
+        const done = this.jobs.get(m && m.id);
+        if (done) { this.jobs.delete(m.id); done(m); }
       });
-      this.engine = win;
-      win.on('closed', () => { if (this.engine === win) { this.engine = null; this.ready = null; this.failAll('the voice engine stopped'); } });
-      win.webContents.on('render-process-gone', () => { try { win.destroy(); } catch { /* gone */ } });
-      win.loadURL(`https://${ENGINE_HOST}/engine.html`).then(() => {
-        this.call({ type: 'load', model: PACK.model }).then((r) => (r && r.ok ? resolve(true) : reject(new Error((r && r.error) || 'the voice engine didn’t start'))));
-      }, reject);
+      child.on('exit', () => { if (this.engine === child) { this.engine = null; this.ready = null; } this.failAll('the voice engine stopped'); });
+      this.call({ type: 'load' }).then((r) => (r && r.ok ? resolve(true) : reject(new Error((r && r.error) || 'the voice engine didn’t start'))));
     });
     this.ready.catch((err) => { this.log('voices engine', err); this.stopEngine(); });
     return this.ready;
   }
   call(msg) {
     return new Promise((resolve) => {
-      if (!this.engine || this.engine.isDestroyed()) { resolve({ error: 'the voice engine isn’t running' }); return; }
+      if (!this.engine) { resolve({ error: 'the voice engine isn’t running' }); return; }
       const id = ++this.seq;
       this.jobs.set(id, resolve);
-      this.engine.webContents.send('neo-tts-job', { ...msg, id });
+      this.engine.postMessage({ ...msg, id, dir: this.dir });
     });
   }
   failAll(error) { for (const done of this.jobs.values()) done({ error }); this.jobs.clear(); }
   stopEngine() {
-    const w = this.engine;
+    const c = this.engine;
     this.engine = null;
     this.ready = null;
     this.failAll('stopped');
-    if (w && !w.isDestroyed()) w.destroy();
+    try { if (c) c.kill(); } catch { /* gone */ }
   }
 
   // one stretch of text → { audio: Float32Array, rate } or { error }
