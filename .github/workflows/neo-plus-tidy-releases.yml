@@ -1,0 +1,43 @@
+# NEO+: renames the releases made before 2.0 (titled "NEO-Drive x.y.z") to
+# NEO+, in their titles and notes. Run it by hand from the Actions tab. It's
+# safe to run more than once. The installer file names in those old releases
+# are left as they are, so each old release still matches its own update file.
+name: NEO+ tidy old releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      delete_old_voice_packs:
+        description: Also delete the unused voice packs kokoro-voices-1, -2 and -3 (NEO+ uses kokoro-voices-4)
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Titles and notes
+        run: |
+          gh api "repos/$REPO/releases?per_page=100" --paginate --jq '.[] | @base64' | while read -r row; do
+            r=$(echo "$row" | base64 -d)
+            id=$(jq -r .id <<<"$r"); tag=$(jq -r .tag_name <<<"$r")
+            name=$(jq -r '.name // ""' <<<"$r"); body=$(jq -r '.body // ""' <<<"$r")
+            newname=${name//NEO-Drive/NEO+}
+            newbody=${body//NEO-Drive/NEO+}
+            if [ "$newname" != "$name" ] || [ "$newbody" != "$body" ]; then
+              gh api -X PATCH "repos/$REPO/releases/$id" -f name="$newname" -f body="$newbody" --silent
+              echo "renamed $tag: $newname"
+            fi
+          done
+      - name: Old voice packs
+        if: ${{ inputs.delete_old_voice_packs }}
+        run: |
+          for t in kokoro-voices-1 kokoro-voices-2 kokoro-voices-3; do
+            gh release delete "$t" -R "$REPO" --yes --cleanup-tag && echo "deleted $t" || echo "$t: not there"
+          done
