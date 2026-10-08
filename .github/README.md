@@ -14,6 +14,23 @@ Every book you write in NEO gets a folder in your Google Drive, a Master Manuscr
 
 NEO+ updates itself, the way NEO does: each morning it picks up Hugh's latest NEO along with NEO+'s own changes.
 
+## Install (Mac)
+
+1. From the [latest release](https://github.com/ethaneveritt/NEO-plus/releases/latest), download **NEO-Plus-*-arm64.dmg** for a Mac with Apple silicon (M1 or later; Apple menu → About This Mac says "Chip: Apple M…"), or **NEO-Plus-*-x64.dmg** for an Intel Mac.
+2. Open it and drag **NEO+** into **Applications**.
+3. The first time, macOS won't open it, because NEO+ isn't signed with a paid Apple developer certificate. Open **System Settings → Privacy & Security**, scroll down to the line about NEO+, click **Open Anyway**, then confirm. After that it opens like any other app.
+
+A Mac doesn't let an app install its own updates unless it carries that paid certificate, so on a Mac NEO+ tells you when a new version is out, with a **Download** button; install it the same way, over the old one. Your library and settings stay.
+
+## Your library on every computer
+
+**Google Drive → Keep My Library the Same on Every Computer**, on each computer, signed in to the same Google account. Every book — chapters, notes, outline, comments, placeholders, Darlings, covers, shelves — is kept in a **NEO+ Library** folder in your Google Drive, and what you write on one computer is on the other the next time you look: within half a minute while NEO+ is open, and as soon as you open it. When you quit, NEO+ sends up what you just wrote before it closes.
+
+- **A new computer** (say, a Mac you've just installed NEO+ on): connect Google Drive and NEO+ offers to bring your library over. Books already on that computer are kept, and go to the other computer too.
+- **The same chapter changed on both computers** before they caught up: nothing is lost. This computer's text stays, and the other one's comes in as the chapter right after it, named "(from *that computer*, *time*)" — the way NEO itself handles a library shared over iCloud. Shelves, chapter lists, comments and Darlings changed on both are merged; notes changed on both keep both texts.
+- **Safety:** before NEO+ replaces or removes any file on a computer, it keeps that computer's copy for 30 days (in NEO+'s app data, `library-sync/backup`). Files removed from Drive go to Drive's trash. If a sync would remove most of your library at once, or your library folder isn't there, it stops and changes nothing.
+- The **NEO+ Library** folder is NEO+'s working copy: read it if you like, but write in NEO+ (or in the chapter Docs).
+
 ## Connect Google Drive
 
 1. In NEO, open the **Google Drive** menu → **Connect Google Drive…**

@@ -120,6 +120,33 @@ class FakeGoogle {
     f.parents = f.parents.filter((p) => !removeParents.includes(p)).concat(addParents.filter((p) => !f.parents.includes(p)));
     return { ...f };
   }
+  // plain files: their bytes, with Drive's md5Checksum and size
+  async upload({ id, name, parents = [], appProperties, data, mimeType = 'application/octet-stream' }) {
+    this.check(); this.calls.write++;
+    const md5 = require('crypto').createHash('md5').update(data).digest('hex');
+    let f;
+    if (id) {
+      f = this.files.get(id);
+      if (!f) { const e = new Error('File not found: ' + id); e.status = 404; throw e; }
+      if (appProperties) Object.assign(f.appProperties, appProperties);
+      this.touch(f);
+    } else {
+      f = { id: newId('file'), name, mimeType, parents: [...parents], appProperties: { ...(appProperties || {}) }, trashed: false, version: '1', modifiedTime: new Date().toISOString() };
+      this.files.set(f.id, f);
+    }
+    this.blobs = this.blobs || new Map();
+    this.blobs.set(f.id, Buffer.from(data));
+    f.md5Checksum = md5;
+    f.size = String(data.length);
+    return { ...f, appProperties: { ...f.appProperties } };
+  }
+  async download(id) {
+    this.check(); this.calls.read++;
+    const b = this.blobs && this.blobs.get(id);
+    if (!b) { const e = new Error('File not found: ' + id); e.status = 404; throw e; }
+    return Buffer.from(b);
+  }
+
   // q: clauses joined by " and ": 'ID' in parents | trashed = false |
   // mimeType = '...' | appProperties has { key='k' and value='v' }
   async listFiles(q) {
@@ -134,7 +161,7 @@ class FakeGoogle {
       if (c[4] !== undefined) return f.trashed === (c[4] === 'true');
       if (c[5] !== undefined) return f.mimeType === c[5];
       return true;
-    })).map((f) => ({ ...f }));
+    })).map((f) => ({ ...f, parents: [...f.parents], appProperties: { ...f.appProperties } }));
   }
   async updateComment(fileId, commentId, content) {
     this.check(); this.calls.write++;

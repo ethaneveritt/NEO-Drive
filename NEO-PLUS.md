@@ -18,9 +18,9 @@ Ethan Everitt's personal build of [NEO](https://github.com/hughhowey/neo), Hugh 
 
 1. merges Hugh's newest release tag,
 2. runs the NEO+ tests,
-3. builds the Windows installer and publishes it as a release here.
+3. builds the Windows installer and the Mac apps (Apple silicon and Intel), each tested on its own system, and publishes them together as one release here.
 
-The installed NEO picks the release up on its own, the way NEO always has. If Hugh changes code that NEO+ also changes, the run stops, opens an issue, and nothing is released until the merge is resolved. Versions read as Hugh's version with the last number × 100 plus a build count: Hugh's 1.4.0 ships here as 1.4.1, 1.4.2, …
+The installed NEO+ on Windows picks the release up on its own, the way NEO always has. The Mac app is only ad-hoc signed (no paid Apple Developer ID), so macOS won't let it install its own updates; on a Mac NEO+ checks the latest release and shows a **Download** note instead (`watchForNewVersion` in `neo-plus/main.js`). It has its own app id (`com.ethaneveritt.neoplus`) and name, so it never mixes with Hugh's NEO on the same Mac. If Hugh changes code that NEO+ also changes, the run stops, opens an issue, and nothing is released until the merge is resolved. Versions are `neo-plus/VERSION` (major.minor) plus a patch number that counts up with each release; Hugh's version is in the release notes.
 
 ## Where the code is
 
@@ -35,6 +35,9 @@ To keep merges with Hugh's code painless, nearly everything lives in its own fil
 | `scripts/neo-plus-*.test.js` | Unit tests (`node --test scripts/neo-plus-*.test.js`) |
 | `scripts/neo-plus.e2e.js` | End-to-end tests on a throwaway library (`npx electron scripts/neo-plus.e2e.js`) |
 | `neo-plus/blocks.js` | The manuscript as Google Docs paragraphs ("blocks"), reading a Doc back, and the diff that turns one Doc into another with the fewest edits (so comments stay anchored) |
+| `neo-plus/library-sync.js` | The whole library kept the same on every computer through a "NEO+ Library" folder in Drive: a file per library file, a three-way comparison per file (this computer, Drive, and what they last agreed on), merges for NEO's JSON, a chapter changed on both kept as two chapters, backups before anything is replaced, and stops before mass removals. State in `userData/neo-plus/library-sync/` |
+| `neo-plus/library.js` | The window's side: where the library is, which book is open, and having NEO take in what arrived (its own `refreshFromDisk`); on a Mac, the new-version note |
+| `scripts/neo-plus-library-sync.test.js`, `scripts/neo-plus-library*.e2e.js` | Library sync: two computers on the Google stand-in, and inside NEO |
 | `neo-plus/sync.js` | The sync engine: folder, Master Manuscript, chapter Docs; push, pull, conflicts, master edits undone, deleted chapters. State per book in `userData/neo-plus/books/` |
 | `neo-plus/google.js` | Google sign-in (desktop loopback flow, PKCE, `drive.file` scope only; refresh token encrypted with `safeStorage` in `userData/neo-plus/`) and the Drive/Docs calls |
 | `neo-plus/fake-google.js` | An in-memory Google Drive + Docs that keeps Google's index rules, for tests (`NEO_PLUS_FAKE=1`) |
