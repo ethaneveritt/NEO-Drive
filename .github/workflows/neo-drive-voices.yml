@@ -1,10 +1,17 @@
-# NEO-Drive: builds the "natural voices" pack for Read Aloud — the Kokoro-82M
-# voice model (Apache-2.0, by hexgrad; ONNX export by onnx-community) and the
-# ONNX Runtime WebAssembly files that run it — and publishes it as a
-# pre-release here, so NEO downloads it from one place it can trust (each
-# file's SHA-256 is in manifest.json, whose own hash NEO has built in).
-# Pre-release, so the updater never mistakes it for a version of NEO.
-# Run by hand from the Actions tab.
+# NEO-Drive: builds the "natural voices" pack for Read Aloud and publishes it
+# as a pre-release here (never mistaken for a version of NEO), so NEO
+# downloads it from one place it can trust: every file's SHA-256 is in
+# manifest.json, whose own hash is built into NEO (neo-drive/tts-main.js).
+#
+#   the voice     Kokoro-82M (Apache-2.0, hexgrad), q8 ONNX export by
+#                 onnx-community, and its English voices
+#   to run it     ONNX Runtime for Node (MIT) — each computer downloads only
+#                 its own platform's library — and phonemizer (eSpeak NG,
+#                 Apache-2.0 / GPL-3.0 data as published)
+#   Windows       the Visual C++ runtime DLLs ONNX Runtime needs, beside it,
+#                 for computers that don't have them installed
+#
+# Built on Windows (for those DLLs). Run by hand from the Actions tab.
 name: NEO-Drive voices pack
 
 on:
@@ -13,56 +20,72 @@ on:
       tag:
         description: Release tag for the pack
         required: true
-        default: kokoro-voices-1
+        default: kokoro-voices-2
 
 permissions:
   contents: write
 
 jobs:
   pack:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Gather the files
         env:
           MODEL: onnx-community/Kokoro-82M-v1.0-ONNX
-          TRANSFORMERS: '3.5.1'
+          ORT: '1.21.0'
+          PHONEMIZER: '1.2.1'
         run: |
           set -euo pipefail
           mkdir -p pack && cd pack
           rev=$(curl -fsSL "https://huggingface.co/api/models/$MODEL" | jq -r .sha)
-          echo "Model revision $rev"
           base="https://huggingface.co/$MODEL/resolve/$rev"
-          files="config.json tokenizer.json tokenizer_config.json onnx/model_quantized.onnx"
           voices=$(curl -fsSL "https://huggingface.co/api/models/$MODEL/tree/$rev/voices" | jq -r '.[].path' | grep -E '^voices/(af|am|bf|bm)_.*\.bin$')
-          for f in $files $voices; do
+          for f in config.json tokenizer.json tokenizer_config.json onnx/model_quantized.onnx $voices; do
             mkdir -p "$(dirname "$f")"
             curl -fsSL "$base/$f" -o "$f"
           done
-          npm pack "@huggingface/transformers@$TRANSFORMERS" --silent
-          tar xzf huggingface-transformers-*.tgz package/dist/ort-wasm-simd-threaded.jsep.mjs package/dist/ort-wasm-simd-threaded.jsep.wasm
-          mkdir -p ort && mv package/dist/ort-wasm-simd-threaded.jsep.* ort/
-          rm -rf package huggingface-transformers-*.tgz
-          curl -fsSL "https://huggingface.co/$MODEL/resolve/$rev/README.md" -o MODEL-README.md || true
+          curl -fsSL "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/LICENSE" -o LICENSE-Kokoro.txt || echo "Apache-2.0 (https://huggingface.co/hexgrad/Kokoro-82M)" > LICENSE-Kokoro.txt
+          # the Node packages, laid out as node_modules so require() finds them
+          mkdir -p ../npm && (cd ../npm && npm pack "onnxruntime-node@$ORT" "onnxruntime-common@$ORT" "phonemizer@$PHONEMIZER" --silent)
+          for p in onnxruntime-node onnxruntime-common phonemizer; do
+            mkdir -p "node_modules/$p"
+            tar xzf ../npm/$p-*.tgz -C "node_modules/$p" --strip-components=1
+          done
+          n=node_modules/onnxruntime-node
+          rm -rf $n/script $n/lib $n/*.md
+          find $n/dist -name '*.map' -o -name '*.d.ts' | xargs rm -f
+          b=$n/bin/napi-v3
+          rm -f $b/linux/x64/libonnxruntime_providers_cuda.so $b/linux/x64/libonnxruntime_providers_tensorrt.so $b/linux/x64/libonnxruntime.so.1.*.* $b/win32/x64/DirectML.dll
+          rm -rf $b/linux/arm64 $b/win32/arm64
+          cp /c/Windows/System32/msvcp140.dll /c/Windows/System32/msvcp140_1.dll /c/Windows/System32/vcruntime140.dll /c/Windows/System32/vcruntime140_1.dll $b/win32/x64/
+          c=node_modules/onnxruntime-common
+          rm -rf $c/lib $c/dist/esm $c/*.md; find $c -name '*.map' -o -name '*.d.ts' | xargs rm -f
+          ph=node_modules/phonemizer
+          rm -rf $ph/types $ph/dist/phonemizer.js $ph/*.md
           # flat asset names (a release asset can't hold a /) and the manifest
           mkdir ../assets
           node -e '
             const fs = require("fs"), path = require("path"), crypto = require("crypto");
             const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
-            const files = walk(".").filter((f) => f !== "MODEL-README.md").map((f) => f.split(path.sep).join("/")).sort();
+            const files = walk(".").map((f) => f.split(path.sep).join("/")).sort();
             const out = [];
             for (const f of files) {
               const buf = fs.readFileSync(f);
               const asset = f.replace(/\//g, "__");
               fs.copyFileSync(f, path.join("../assets", asset));
-              out.push({ path: f, asset, size: buf.length, sha256: crypto.createHash("sha256").update(buf).digest("hex") });
+              const m = f.match(/bin\/napi-v3\/(\w+)\/(\w+)\//);
+              out.push({ path: f, asset, size: buf.length, sha256: crypto.createHash("sha256").update(buf).digest("hex"), ...(m ? { platform: m[1] + "-" + m[2] } : {}) });
             }
-            const m = { name: "Kokoro-82M natural voices for NEO-Drive", model: process.env.MODEL, revision: process.argv[1], transformers: process.env.TRANSFORMERS, files: out };
+            const m = { name: "Kokoro-82M natural voices for NEO-Drive", model: process.env.MODEL, revision: process.argv[1], onnxruntime: process.env.ORT, phonemizer: process.env.PHONEMIZER, files: out };
             fs.writeFileSync("../assets/manifest.json", JSON.stringify(m, null, 1) + "\n");
+            for (const p of ["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"]) console.log("::notice::" + p + ": " + (out.filter((f) => !f.platform || f.platform === p).reduce((n, f) => n + f.size, 0) / 1048576).toFixed(0) + " MB");
           ' "$rev"
           cd ../assets
           echo "::notice::manifest.json sha256 $(sha256sum manifest.json | cut -d' ' -f1)"
-          echo "::notice::$(ls | wc -l) assets, $(du -ch . | tail -1 | cut -f1)"
-          node -e 'const m=require("./manifest.json"); const f=m.files.find((x)=>x.path==="onnx/model_quantized.onnx"); console.log("::notice::model " + f.size + " bytes sha256 " + f.sha256 + " (revision " + m.revision + ")")'
+          echo "::notice::$(ls | wc -l) assets"
       - name: Publish the pack
         env:
           GH_TOKEN: ${{ github.token }}
@@ -70,5 +93,5 @@ jobs:
           gh release create "${{ inputs.tag }}" -R "${{ github.repository }}" --prerelease --latest=false \
             --target "${{ github.sha }}" \
             --title "Natural voices for Read Aloud (Kokoro)" \
-            --notes "Not a version of NEO: the optional natural voices NEO-Drive's Read Aloud downloads (Read Aloud → Download Natural Voices). Kokoro-82M by hexgrad, Apache-2.0 (https://huggingface.co/hexgrad/Kokoro-82M), ONNX export by onnx-community; ONNX Runtime Web (MIT) from transformers.js (Apache-2.0)." \
+            --notes "Not a version of NEO: the optional natural voices NEO-Drive's Read Aloud downloads (Read Aloud → Download Natural Voices). Kokoro-82M by hexgrad, Apache-2.0 (https://huggingface.co/hexgrad/Kokoro-82M), ONNX export by onnx-community; ONNX Runtime (MIT); phonemizer / eSpeak NG (https://github.com/xenova/phonemizer.js); Microsoft Visual C++ runtime (redistributable)." \
             assets/*
