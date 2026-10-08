@@ -127,7 +127,7 @@ class Voices {
       }
       fs.writeFileSync(path.join(tmp, 'manifest.json'), mbuf);
       fs.rmSync(this.dir, { recursive: true, force: true });
-      fs.renameSync(tmp, this.dir);
+      await renameSoon(tmp, this.dir);
       return { ok: true };
     } catch (err) {
       this.log('voices download', err);
@@ -220,6 +220,17 @@ class Voices {
     const v = VOICES.some(([id]) => id === voice) ? voice : 'af_heart';
     const s = Math.min(2, Math.max(0.5, Number(speed) || 1));
     return this.call({ type: 'speak', text: String(text || '').slice(0, 2000), voice: v, speed: s });
+  }
+}
+
+// Windows can hold a just-written file for a moment (an antivirus scan, the
+// search indexer), and a folder holding it can't be renamed until it lets go.
+async function renameSoon(from, to) {
+  for (let i = 0; ; i++) {
+    try { fs.renameSync(from, to); return; } catch (err) {
+      if (i >= 20 || !['EPERM', 'EACCES', 'EBUSY'].includes(err.code)) throw err;
+      await new Promise((r) => setTimeout(r, 500));
+    }
   }
 }
 
