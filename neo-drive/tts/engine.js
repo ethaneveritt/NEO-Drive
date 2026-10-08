@@ -23,7 +23,7 @@ async function load(dir) {
   const tok = K.tokenizer(JSON.parse(fs.readFileSync(path.join(dir, 'tokenizer.json'), 'utf8')));
   // all but one of the computer's cores
   const threads = Math.max(1, Math.min(8, (os.availableParallelism ? os.availableParallelism() : os.cpus().length) - 1));
-  const session = await ort.InferenceSession.create(path.join(dir, 'onnx', 'model_quantized.onnx'), {
+  const session = await ort.InferenceSession.create(path.join(dir, 'onnx', 'model_fp16.onnx'), {
     intraOpNumThreads: threads, interOpNumThreads: 1, graphOptimizationLevel: 'all', executionMode: 'sequential'
   });
   st = { dir, ort, tok, session, voices: new Map(), threads };
