@@ -31,6 +31,12 @@ function extendTextMenu(items, params, win) {
       { label: t('Underline'), accelerator: 'CmdOrCtrl+U', registerAccelerator: false, click: () => send({ type: 'nd-format', cmd: 'underline' }) },
       { type: 'separator' },
       { label: t('Add Comment…'), accelerator: 'CmdOrCtrl+Alt+M', registerAccelerator: false, click: () => send({ type: 'nd-addComment' }) },
+      { label: t('Read Highlighted Passage Aloud'), click: () => send({ type: 'nd-read', cmd: 'selection' }) },
+      { type: 'separator' }
+    );
+  } else {
+    extra.push(
+      { label: t('Read Aloud from Here'), click: () => send({ type: 'nd-read', cmd: 'here', x: params.x, y: params.y }) },
       { type: 'separator' }
     );
   }
@@ -163,12 +169,82 @@ function disconnect() {
 const docUrl = (id) => `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
 const folderUrl = (id) => `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
 
+// ------------------------------------------------------------ read aloud
+// Natural voices (neo-drive/tts-main.js) and the Read Aloud choices: voice
+// ('system' or a Kokoro voice), speed, volume, and whether NEO has offered
+// the natural voices yet.
+let voices = null;
+function getVoices() {
+  if (voices) return voices;
+  const { Voices } = require('./tts-main.js');
+  const { app } = require('electron');
+  voices = new Voices({ dir: path.join(app.getPath('userData'), 'neo-drive'), log: logError, notify: (m) => { sendToWindow(m); if (!m.downloading) rebuildMenu(); } });
+  return voices;
+}
+function readPrefs() {
+  const st = readSettings();
+  const num = (v, d, lo, hi) => (typeof v === 'number' && v >= lo && v <= hi ? v : d);
+  return { voice: typeof st.readVoice === 'string' ? st.readVoice : 'af_heart', speed: num(st.readSpeed, 1, 0.5, 2), volume: num(st.readVolume, 0.8, 0, 1), asked: !!st.readAsked };
+}
+const SPEEDS = [0.75, 0.9, 1, 1.1, 1.25, 1.5];
+function readAloudMenu() {
+  const send = (msg) => () => sendToWindow({ type: 'nd-read', ...msg });
+  let st = { installed: false, downloading: false, voices: [] };
+  try { st = getVoices().status(); } catch (err) { logError('voices', err); }
+  const pr = readPrefs();
+  const setVoice = (v) => () => { writeSettings({ readVoice: v }); rebuildMenu(); sendToWindow({ type: 'nd-read-prefs', ...readPrefs() }); };
+  const voiceItems = [];
+  if (st.installed) {
+    for (const v of st.voices) voiceItems.push({ label: `${v.name} — ${t(v.kind)}`, type: 'radio', checked: pr.voice === v.id, click: setVoice(v.id) });
+    voiceItems.push({ type: 'separator' });
+  }
+  voiceItems.push({ label: t('This Computer’s Voice'), type: 'radio', checked: pr.voice === 'system' || !st.installed, click: setVoice('system') });
+  return {
+    label: t('Read Aloud'),
+    submenu: [
+      { label: t('Read Chapter from the Beginning'), click: send({ cmd: 'chapter' }) },
+      { label: t('Read Chapter from Here'), accelerator: 'CmdOrCtrl+Shift+U', registerAccelerator: false, click: send({ cmd: 'here' }) },
+      { label: t('Read Highlighted Passage'), click: send({ cmd: 'selection' }) },
+      { label: t('Read This Page'), click: send({ cmd: 'page' }) },
+      { label: t('Read the Whole Manuscript'), click: send({ cmd: 'book' }) },
+      { label: t('Continue Where I Stopped'), click: send({ cmd: 'continue' }) },
+      { type: 'separator' },
+      { label: t('Pause / Play'), click: send({ cmd: 'toggle' }) },
+      { label: t('Stop'), click: send({ cmd: 'stop' }) },
+      { type: 'separator' },
+      { label: t('Voice'), submenu: voiceItems },
+      { label: t('Speed'), submenu: SPEEDS.map((v) => ({ label: v === 1 ? t('Normal') : `${v}×`, type: 'radio', checked: Math.abs(pr.speed - v) < 0.01, click: () => { writeSettings({ readSpeed: v }); rebuildMenu(); sendToWindow({ type: 'nd-read-prefs', ...readPrefs() }); } })) },
+      { type: 'separator' },
+      st.downloading
+        ? { label: t('Downloading Natural Voices…'), enabled: false }
+        : st.installed
+          ? { label: t('Remove Natural Voices…'), click: send({ cmd: 'removeVoices' }) }
+          : { label: t('Download Natural Voices (Kokoro, 125 MB)…'), click: send({ cmd: 'getVoices' }) }
+    ]
+  };
+}
+
 // The window's one door in: window.neo.neoDrive(msg) (preload.js hook)
 async function handle(_e, msg) {
   const d = getDrive();
   switch (msg && msg.op) {
     case 'status': return status();
     case 'prefs': return { navHints: navHints(), spellEngine: spellEngine(), systemSpell: SYSTEM_SPELL };
+    case 'readPrefs': return { ...readPrefs(), voices: getVoices().status() };
+    case 'setReadPrefs': {
+      const o = {};
+      if (typeof msg.voice === 'string') o.readVoice = msg.voice;
+      if (typeof msg.speed === 'number') o.readSpeed = Math.min(2, Math.max(0.5, msg.speed));
+      if (typeof msg.volume === 'number') o.readVolume = Math.min(1, Math.max(0, msg.volume));
+      if (msg.asked) o.readAsked = true;
+      writeSettings(o);
+      if (o.readVoice || o.readSpeed) rebuildMenu();
+      return readPrefs();
+    }
+    case 'voicesInstall': { const r = await getVoices().install(); rebuildMenu(); return r; }
+    case 'voicesCancel': getVoices().cancel(); return { ok: true };
+    case 'voicesRemove': { const r = getVoices().remove(); rebuildMenu(); return r; }
+    case 'speak': return getVoices().speak({ text: msg.text, voice: msg.voice, speed: msg.speed });
     case 'connect': return connect();
     case 'disconnect': return disconnect();
     case 'sync': {
@@ -320,6 +396,10 @@ function extendAppMenu(template, rebuild) {
   }
   const menu = { label: t('Google Drive'), submenu: items };
   const out = [...template];
+  try {
+    const help0 = out.findIndex((m) => m && m.role === 'help' || (m && m.label === t('Help')));
+    out.splice(help0 < 0 ? out.length : help0, 0, readAloudMenu());
+  } catch (err) { logError('read aloud menu', err); }
   // Edit: Spellcheck With (after NEO's own Spellcheck Language)
   const edit = out.find((m) => m && Array.isArray(m.submenu) && (m.role === 'editMenu' || m.label === t('Edit')));
   if (edit && SYSTEM_SPELL) {
