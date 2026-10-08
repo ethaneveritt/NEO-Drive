@@ -89,7 +89,7 @@ async function main() {
 
     await check('a sentence of natural voice comes back as audio', async () => {
       const t0 = Date.now();
-      const r = await js(`window.neo.neoDrive({ op: 'speak', text: 'The lamp was lit.', voice: 'af_heart', speed: 1 }).then((r) => ({ error: r.error, secs: r.audio && r.audio.length / r.rate, peak: r.audio ? Math.max(...Array.from(r.audio).map(Math.abs)) : 0 }))`);
+      const r = await js(`window.neo.neoDrive({ op: 'speak', text: 'The lamp was lit.', voice: 'af_heart', speed: 1 }).then((r) => ({ error: r.error, secs: r.audio && r.audio.length / r.rate, peak: r.audio ? r.audio.reduce((m, x) => Math.max(m, Math.abs(x)), 0) : 0 }))`);
       assert.ok(!r.error, r.error);
       say('notice', `speech: ${r.secs.toFixed(2)}s of audio in ${((Date.now() - t0) / 1000).toFixed(1)}s (first call loads the model)`);
       assert.ok(r.secs > 0.5 && r.secs < 5, 'length ' + r.secs);
@@ -98,6 +98,16 @@ async function main() {
       const r2 = await js(`window.neo.neoDrive({ op: 'speak', text: 'The ferry was an hour late, though once it had cleared the breakwater it would only take ten minutes to land.', voice: 'bm_george', speed: 1 }).then((r) => ({ error: r.error, secs: r.audio && r.audio.length / r.rate }))`);
       assert.ok(!r2.error, r2.error);
       say('notice', `speed: ${r2.secs.toFixed(2)}s of audio in ${((Date.now() - t1) / 1000).toFixed(1)}s`);
+      // every voice, short and long, comes out as sound (not silence)
+      const long = 'The lamp was lit. Mara had made sure of that. She had trimmed the wick, wiped the glass, and filled the reservoir twice.';
+      // (all 28 with NEO_DRIVE_ALL_VOICES=1; by default a few of each kind)
+      const voices = process.env.NEO_DRIVE_ALL_VOICES ? (await js(`window.neo.neoDrive({ op: 'readPrefs' })`)).voices.voices.map((v) => v.id) : ['af_heart', 'am_michael', 'bf_emma', 'bm_george'];
+      for (const v of voices) {
+        for (const text of [long, 'The lamp was lit.']) {
+          const q = await js(`window.neo.neoDrive({ op: 'speak', text: ${JSON.stringify(text)}, voice: '${v}', speed: 1 }).then((r) => r.error ? { error: r.error } : (() => { let peak = 0, bad = 0; for (const x of r.audio) { if (!Number.isFinite(x)) bad++; else if (Math.abs(x) > peak) peak = Math.abs(x); } return { peak, bad }; })())`);
+          assert.ok(!q.error && !q.bad && q.peak > 0.05, `${v} (${text.length} chars): ${JSON.stringify(q)}`);
+        }
+      }
     });
 
     await check('Read Chapter from the Beginning: heading, then each sentence, lit as it is read', async () => {
