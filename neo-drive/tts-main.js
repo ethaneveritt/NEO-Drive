@@ -50,6 +50,7 @@ class Voices {
     this.engine = null;   // the hidden window
     this.ready = null;    // promise: the engine has loaded the model
     this.jobs = new Map();
+    this.progress = new Map(); // export job id → its progress callback
     this.seq = 0;
     this.download = null; // { done, total, abort }
   }
@@ -165,6 +166,7 @@ class Voices {
       } catch (err) { reject(err); return; }
       this.engine = child;
       child.on('message', (m) => {
+        if (m && m.event === 'progress') { const p = this.progress.get(m.id); if (p) p(m); return; }
         const done = this.jobs.get(m && m.id);
         if (done) { this.jobs.delete(m.id); done(m); }
       });
@@ -174,12 +176,14 @@ class Voices {
     this.ready.catch((err) => { this.log('voices engine', err); this.stopEngine(); });
     return this.ready;
   }
-  call(msg) {
+  call(msg, onProgress) {
     return new Promise((resolve) => {
       if (!this.engine) { resolve({ error: 'the voice engine isn’t running' }); return; }
       const id = ++this.seq;
+      if (onProgress) { this.progress.set(id, onProgress); msg.onId && msg.onId(id); }
       this.jobs.set(id, resolve);
-      this.engine.postMessage({ ...msg, id, dir: this.dir });
+      const { onId, ...plain } = msg; // eslint-disable-line no-unused-vars
+      this.engine.postMessage({ ...plain, id, dir: this.dir });
     });
   }
   failAll(error) { for (const done of this.jobs.values()) done({ error }); this.jobs.clear(); }
@@ -190,6 +194,24 @@ class Voices {
     this.failAll('stopped');
     try { if (c) c.kill(); } catch { /* gone */ }
   }
+
+  // MP3 files of the voice reading: files [{ path, title, album, artist,
+  // track, items: [{ text, gap }] }]. Resolves when they're written.
+  async exportAudio({ files, voice, speed }, onProgress) {
+    if (!this.installed()) return { error: 'not-installed' };
+    try { await this.startEngine(); } catch (err) { return { error: String((err && err.message) || err) }; }
+    const v = VOICES.some(([id]) => id === voice) ? voice : 'af_heart';
+    const s = Math.min(2, Math.max(0.5, Number(speed) || 1));
+    let jobId = 0;
+    this.exporting = { cancel: () => { if (this.engine && jobId) this.engine.postMessage({ type: 'cancel', target: jobId }); } };
+    try {
+      return await this.call({ type: 'export', files, voice: v, speed: s, onId: (id) => { jobId = id; } }, onProgress);
+    } finally {
+      if (jobId) this.progress.delete(jobId);
+      this.exporting = null;
+    }
+  }
+  cancelExport() { if (this.exporting) this.exporting.cancel(); }
 
   // one stretch of text → { audio: Float32Array, rate } or { error }
   async speak({ text, voice, speed }) {

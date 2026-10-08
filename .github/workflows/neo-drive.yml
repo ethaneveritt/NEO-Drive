@@ -37,6 +37,7 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       version: ${{ steps.plan.outputs.version }}
       sha: ${{ steps.plan.outputs.sha }}
+      neo: ${{ steps.plan.outputs.neo }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -111,17 +112,17 @@ jobs:
             echo "build=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # NEO+ has its own version (neo-drive/VERSION: major.minor); each
+          # release is the next patch. Hugh's NEO version goes in the notes.
           base=$(node -p "require('./package.json').version")
-          IFS=. read -r maj min pat <<< "$base"
-          lo=$((pat * 100)); n=0
-          for t in $(git tag -l "v$maj.$min.*"); do
-            p=${t##*.}
-            if [ "$p" -gt "$lo" ] && [ "$p" -lt $((lo + 100)) ] && [ $((p - lo)) -gt "$n" ]; then n=$((p - lo)); fi
-          done
-          version="$maj.$min.$((lo + n + 1))"
-          echo "Releasing $version (Hugh's $base + NEO-Drive)."
+          mm=$(tr -d ' \r\n' < neo-drive/VERSION)
+          n=-1
+          for t in $(git tag -l "v$mm.*"); do p=${t##*.}; [ "$p" -gt "$n" ] && n=$p; done
+          version="$mm.$((n + 1))"
+          echo "Releasing NEO+ $version (Hugh's NEO $base)."
           echo "build=true" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "neo=$base" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   windows:
@@ -163,7 +164,10 @@ jobs:
             -c.extraMetadata.version=${{ needs.sync.outputs.version }} \
             -c.publish.provider=github \
             -c.publish.owner=${{ github.repository_owner }} \
-            -c.publish.repo=${{ github.event.repository.name }} 2>&1 | tee "$RUNNER_TEMP/build.log" || {
+            -c.publish.repo=${{ github.event.repository.name }} \
+            -c.nsis.artifactName='NEO-Plus-Setup-${version}.${ext}' \
+            -c.nsis.shortcutName='NEO+' \
+            -c.nsis.uninstallDisplayName='NEO+' 2>&1 | tee "$RUNNER_TEMP/build.log" || {
               # surface the cause as an annotation, readable without the raw log
               tail -40 "$RUNNER_TEMP/build.log" | tr '\n' ' ' | cut -c1-3500 | sed 's/^/::error title=electron-builder::/'
               exit 1
@@ -194,7 +198,7 @@ jobs:
         run: |
           v=${{ needs.sync.outputs.version }}
           want=$(sed -n 's/^path: *//p' dist/latest.yml)
-          if [ "$want" != "NEO-Setup-$v.exe" ]; then echo "::error::latest.yml names '$want'"; exit 1; fi
-          gh release create "v$v" "dist/NEO-Setup-$v.exe" "dist/NEO-Setup-$v.exe.blockmap" dist/latest.yml \
+          if [ "$want" != "NEO-Plus-Setup-$v.exe" ]; then echo "::error::latest.yml names '$want'"; exit 1; fi
+          gh release create "v$v" "dist/NEO-Plus-Setup-$v.exe" "dist/NEO-Plus-Setup-$v.exe.blockmap" dist/latest.yml \
             --repo "${{ github.repository }}" --target "${{ needs.sync.outputs.sha }}" \
-            --title "NEO-Drive $v" --notes "Hugh Howey's NEO with NEO-Drive's additions. Installs and updates on its own." --latest
+            --title "NEO+ $v" --notes "NEO+ $v: Hugh Howey's NEO ${{ needs.sync.outputs.neo }} with Google Drive, comments and notes, natural-voice Read Aloud and more. Installs and updates on its own." --latest

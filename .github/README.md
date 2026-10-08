@@ -1,18 +1,18 @@
-# NEO-Drive
+# NEO+
 
-**[NEO](https://github.com/hughhowey/neo)** — Hugh Howey's distraction-free word processor for novelists — **with Google Drive built in.**
+**[NEO](https://github.com/hughhowey/neo)** — Hugh Howey's distraction-free word processor for novelists — **plus** Google Drive built in, comments and notes beside the page, natural-voice Read Aloud with audio export, and more.
 
 Every book you write in NEO gets a folder in your Google Drive, a Master Manuscript Google Doc you can share for comments, and a Google Doc for each chapter. They stay in step with NEO as you write, and edits you make to a chapter Doc (on your phone, say) come back into NEO.
 
-> NEO-Drive is an unofficial build by [Ethan Everitt](https://github.com/ethaneveritt). NEO itself is Hugh Howey's work, MIT-licensed; every release of NEO is merged in here automatically. Please send NEO-Drive problems [here](https://github.com/ethaneveritt/NEO-Drive/issues), not to Hugh.
+> NEO+ is an unofficial build by [Ethan Everitt](https://github.com/ethaneveritt). NEO itself is Hugh Howey's work, MIT-licensed; every release of NEO is merged in here automatically. Please send NEO+ problems [here](https://github.com/ethaneveritt/NEO-Drive/issues), not to Hugh.
 
 ## Install (Windows)
 
-1. Download **NEO-Setup-*.exe** from the [latest release](https://github.com/ethaneveritt/NEO-Drive/releases/latest).
+1. Download **NEO-Plus-Setup-*.exe** from the [latest release](https://github.com/ethaneveritt/NEO-Drive/releases/latest).
 2. Run it. If Windows says "Windows protected your PC", click **More info → Run anyway** (the installer isn't signed with a paid certificate).
 3. That's it. It installs over plain NEO if you have it, and keeps your library, books and settings exactly as they were.
 
-NEO-Drive updates itself, the way NEO does: each morning it picks up Hugh's latest NEO along with NEO-Drive's own changes.
+NEO+ updates itself, the way NEO does: each morning it picks up Hugh's latest NEO along with NEO+'s own changes.
 
 ## Connect Google Drive
 
@@ -20,7 +20,7 @@ NEO-Drive updates itself, the way NEO does: each morning it picks up Hugh's late
 2. Your browser opens Google's sign-in. Pick your account and allow access.
 3. Open a book. Within a few seconds its folder appears in your Drive.
 
-NEO-Drive asks Google for one permission only: **the files NEO-Drive itself creates.** It cannot see or change anything else in your Drive. Your words go only between your computer and your own Google account. See the [privacy policy](../PRIVACY.md).
+NEO+ asks Google for one permission only: **the files NEO+ itself creates.** It cannot see or change anything else in your Drive. Your words go only between your computer and your own Google account. See the [privacy policy](../PRIVACY.md).
 
 ## How it works
 
@@ -81,10 +81,11 @@ The Notepad and Chapter Notes are in the book's **Notes** folder in Drive, and t
 
 **Disconnect** any time from the Google Drive menu, or at [myaccount.google.com/permissions](https://myaccount.google.com/permissions). Your Docs stay in your Drive.
 
-## Also in NEO-Drive
+## Also in NEO+
 
 - **Right-click → Italic / Bold / Underline** on selected text (Ctrl+I / B / U work too).
 - **Read Aloud** (its own menu, and right-click): read a chapter from the beginning or from where you are, the highlighted passage, the page on screen, or the whole manuscript, and **Continue Where I Stopped** next time. A small player sits above the bottom bar while it reads: back a sentence, pause and play (it picks up mid-sentence), forward a sentence, stop, **NEO's own volume** (separate from your computer's), speed and voice. Ctrl+Shift+U pauses and plays.
+- **Read Aloud → Export as Audio**: a chapter, or the whole manuscript (one file, or a file per chapter), saved as MP3s in the natural voice — to listen to on your phone or anywhere. It runs in the background while you write.
 - **Natural voices for Read Aloud** (Read Aloud → Download Natural Voices, about 340 MB, once): Kokoro, an open-source voice model that sounds like an audiobook narrator, with American and British voices. It runs entirely on your computer — nothing you write is sent anywhere — and it's free. Without it, Read Aloud uses your computer's own voice.
 - **Edit → Spellcheck With → Windows Spellchecker** (or macOS Spellchecker on a Mac): NEO's Spellcheck Pass (Ctrl+;) uses your computer's own spellchecker — the one Word uses — instead of NEO's built-in dictionary. Right-click an underlined word for suggestions or to add it to the dictionary. Switch back any time.
 - **View → Show “What happens here…” in the Chapters Pane**: untick it to hide the empty outline-note line under each chapter in the left pane (notes you've written still show).

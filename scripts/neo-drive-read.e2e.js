@@ -202,6 +202,35 @@ async function main() {
       read('stop');
     });
 
+    await check('Export as Audio: a chapter as one MP3, the manuscript as an MP3 per chapter', async () => {
+      const { dialog } = require('electron');
+      const out = path.join(tmp, 'audio');
+      fs.mkdirSync(out, { recursive: true });
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: path.join(out, 'Cold Front.mp3') });
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [out] });
+      await js(`document.querySelector('.chapter-body').focus()`);
+      const r = await js(`window.neo.neoDrive({ op: 'exportAudio', scope: 'chapter', chapters: [{ title: 'Chapter 1 — Cold Front', items: [{ text: 'It rained on the harbor.', gap: 300 }, { text: '', gap: 900 }, { text: 'Mara counted coins.', gap: 120 }] }], book: { title: 'The Lighthouse', author: 'Test Writer' }, voice: 'bm_george', speed: 1 })`);
+      assert.ok(r.ok, JSON.stringify(r));
+      const mp3 = fs.readFileSync(path.join(out, 'Cold Front.mp3'));
+      assert.equal(mp3.slice(0, 3).toString(), 'ID3');
+      assert.ok(mp3.includes(Buffer.from('The Lighthouse', 'utf16le')), 'album tag');
+      const size = (mp3[6] << 21) | (mp3[7] << 14) | (mp3[8] << 7) | mp3[9];
+      assert.equal(mp3[10 + size], 0xff, 'MPEG frames after the tag');
+      assert.ok(mp3.length > 15000, 'a few seconds of audio: ' + mp3.length);
+      // the whole manuscript, a file per chapter, through the window's own code
+      await js(`NeoDriveRead.exportAudio('chapters')`);
+      const folder = path.join(out, 'The Lighthouse (audio)');
+      try {
+        await until(async () => fs.existsSync(folder) && fs.readdirSync(folder).filter((f) => f.endsWith('.mp3')).length === 2, 240000, 'two chapter files');
+      } catch (err) {
+        say('notice', 'folder: ' + JSON.stringify(fs.existsSync(out) && fs.readdirSync(out, { recursive: true })) + ' panel: ' + (await js(`(document.getElementById('nd-export') || {}).textContent || 'none'`)));
+        throw err;
+      }
+      assert.deepEqual(fs.readdirSync(folder).sort(), ['01 Chapter 1 — Cold Front.mp3', '02 Chapter 2 — Low Tide.mp3']);
+      await until(() => js(`(() => { const p = document.getElementById('nd-export'); return !!p && /saved/.test(p.textContent); })()`), 10000, 'saved note');
+      if (process.env.SHOT) fs.writeFileSync(process.env.SHOT.replace(/\.png$/, '-export.png'), (await wc.capturePage()).toPNG());
+    });
+
     if (process.env.SAMPLES) {
       // a few voices reading the same lines, saved as WAV files to listen to
       const line = 'The lamp was lit. Mara had made sure of that. She had trimmed the wick, wiped the glass, and filled the reservoir twice.';

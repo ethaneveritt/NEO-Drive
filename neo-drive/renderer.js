@@ -461,6 +461,9 @@
     if (msg.note === 'disconnected') toast(t('Google Drive disconnected. Your Docs stay in your Drive.'), 6000);
   }
 
+  // NEO+ (this build) in the window's title
+  if (document.title === 'NEO') document.title = 'NEO+';
+
   if (window.neo.neoDrive && DB) {
     window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) { drive = { ...drive, ...s }; if (Panels) Panels.setConnected(drive.connected); } }).catch(() => {});
     setInterval(() => { driveTick(false).catch(() => {}); }, SYNC_EVERY);

@@ -54,6 +54,15 @@
     #nd-player.waiting .wait { opacity: .8; animation: nd-pulse 1s ease-in-out infinite; }
     @keyframes nd-pulse { 50% { opacity: .2; } }
     @media (max-width: 760px) { #nd-player .what, #nd-player .voice { display: none; } }
+    #nd-export { position: fixed; right: 18px; bottom: calc(40px * var(--ui-zoom, 1) + 70px); z-index: 86; width: 300px;
+      background: var(--pane); border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); border-radius: 10px;
+      box-shadow: 0 6px 24px rgba(0,0,0,.3); padding: 12px 14px; font-size: 12px; color: var(--muted); }
+    #nd-export b { color: inherit; font-weight: 600; display: block; margin-bottom: 4px; }
+    #nd-export .bar { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 25%, transparent); overflow: hidden; margin: 8px 0 6px; }
+    #nd-export .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+    #nd-export .acts { text-align: right; margin-top: 6px; }
+    #nd-export .acts button { background: none; border: none; color: var(--muted); font-size: 12px; margin-left: 12px; }
+    #nd-export .acts button:hover, #nd-export .acts button.go { color: var(--accent); }
     .nd-voices-modal .bar { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 25%, transparent); overflow: hidden; margin: 14px 0 6px; }
     .nd-voices-modal .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }`;
   document.head.appendChild(st);
@@ -64,7 +73,8 @@
     play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
     pause: '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>',
     stop: '<svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>',
-    vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>'
+    vol: '<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>',
+    save: '<svg viewBox="0 0 24 24"><path d="M11 4h2v9.2l3.3-3.3 1.4 1.4L12 17l-5.7-5.7 1.4-1.4 3.3 3.3zM5 19h14v2H5z"/></svg>'
   };
   const bar = document.createElement('div');
   bar.id = 'nd-player';
@@ -88,6 +98,7 @@
       <input class="vol" type="range" min="0" max="100" value="${Math.round(prefs.volume * 100)}" title="${esc(t('Volume'))}">
       <select class="speed" title="${esc(t('Speed'))}">${speeds.map((s) => `<option value="${s}"${Math.abs(prefs.speed - s) < 0.01 ? ' selected' : ''}>${s === 1 ? '1×' : s + '×'}</option>`).join('')}</select>
       <select class="voice" title="${esc(t('Voice'))}">${voiceOpts}</select>
+      <button class="save" title="${esc(t('Export as audio (MP3) to listen on your phone'))}">${ICON.save}</button>
       <span class="wait"></span>
       <span class="what"></span>`;
     bar.hidden = false;
@@ -96,6 +107,7 @@
     bar.querySelector('.next').onclick = () => step(1);
     bar.querySelector('.toggle').onclick = toggle;
     bar.querySelector('.stop').onclick = () => stop(true);
+    bar.querySelector('.save').onclick = chooseExport;
     const vol = bar.querySelector('.vol');
     vol.oninput = () => setVolume(vol.value / 100);
     vol.onchange = () => call({ op: 'setReadPrefs', volume: prefs.volume });
@@ -514,7 +526,7 @@
     if (prefs.asked || prefs.voice === 'system') return true;
     const choice = await ask(
       t('Natural voices for Read Aloud'),
-      t('NEO-Drive can read your book in a natural, audiobook-like voice (Kokoro). It runs entirely on this computer — nothing you write is sent anywhere — and it’s free. It’s a one-time download of about 340 MB.'),
+      t('NEO+ can read your book in a natural, audiobook-like voice (Kokoro). It runs entirely on this computer — nothing you write is sent anywhere — and it’s free. It’s a one-time download of about 340 MB.'),
       [['later', t('Use this computer’s voice')], ['get', t('Download (about 340 MB)')]]);
     prefs = { ...prefs, ...(await call({ op: 'setReadPrefs', asked: true })) };
     if (choice !== 'get') return true;
@@ -572,17 +584,95 @@
     toast(t('Natural voices removed.'));
   }
 
+  // --------------------------------------------------- export as audio
+  // MP3 files of the natural voice reading a chapter or the whole book, to
+  // listen to on a phone. The voice engine writes them in the background.
+  async function chooseExport() {
+    const v = await ask(t('Export as audio'), t('An MP3 file of the voice reading, to listen to anywhere. It uses the voice and speed you’ve chosen, and runs in the background while you keep writing.'),
+      [['', t('Cancel')], ['chapters', t('Manuscript, a file per chapter')], ['book', t('Whole manuscript')], ['chapter', t('This chapter')]]);
+    if (v) exportAudio(v);
+  }
+  const forExport = (items) => items.map((it) => (it.kind === 'pause' ? { text: '', gap: it.ms } : { text: it.text, gap: it.gap || 120 }));
+  async function exportAudio(scope) {
+    if (!book) return;
+    if (!(prefs.voices && prefs.voices.installed)) {
+      const v = await ask(t('Natural voices needed'), t('Exporting audio uses the natural voices. Download them now (about 340 MB, once)?'), [['', t('Not now')], ['get', t('Download')]]);
+      if (v !== 'get' || !(await getVoices()) || !(prefs.voices && prefs.voices.installed)) return;
+    }
+    if (exportPanel) { toast(t('An export is already running.')); return; }
+    const order = book.chapterOrder.filter((c) => !['contents', 'copyright'].includes(chapterKind(c)));
+    let chapters;
+    if (scope === 'chapter') {
+      const pl = caretPlace();
+      const chId = pl && pl.chId !== 'aux' ? pl.chId : chapterInView();
+      chapters = [{ title: chapterTitle(chId), items: forExport(chapterItems(chId)) }];
+    } else {
+      chapters = order.map((c) => ({ title: chapterTitle(c), items: forExport(chapterItems(c)) })).filter((c) => c.items.some((x) => x.text));
+      if (scope === 'book' && chapters.length) {
+        const title = [book.title, book.subtitle].filter(Boolean).join('. ');
+        if (title) chapters[0].items.unshift({ text: clean(title + (book.author ? '. By ' + book.author : '')) + '.', gap: 1200 });
+        for (const c of chapters) c.items[c.items.length - 1].gap = 1400;
+      }
+    }
+    if (!chapters.length || !chapters.some((c) => c.items.some((x) => x.text))) { toast(t('There’s nothing there to read.')); return; }
+    const r = await call({ op: 'exportAudio', scope, chapters, book: { title: book.title || t('Untitled'), author: book.author || '' }, voice: prefs.voice === 'system' ? 'af_heart' : prefs.voice, speed: prefs.speed });
+    if (r && r.cancelled && !exportPanel) return;
+  }
+  let exportPanel = null;
+  let exportStart = 0;
+  function exportEvent(m) {
+    if (m.started) {
+      document.querySelectorAll('#nd-export').forEach((x) => x.remove());
+      exportPanel = document.createElement('div');
+      exportPanel.id = 'nd-export';
+      exportPanel.innerHTML = `<b>${esc(t('Exporting audio…'))}</b><span class="what"></span><div class="bar"><div></div></div><span class="n"></span>
+        <div class="acts"><button class="cancel">${esc(t('Cancel'))}</button></div>`;
+      document.body.appendChild(exportPanel);
+      exportPanel.querySelector('.cancel').onclick = () => call({ op: 'exportCancel' });
+      exportStart = Date.now();
+      return;
+    }
+    if (!exportPanel) return;
+    if (m.finished) {
+      // the note stays until closed; another export can start meanwhile
+      const p = exportPanel;
+      exportPanel = null;
+      if (m.ok) {
+        const where = m.written && m.written[0];
+        p.innerHTML = `<b>${esc(m.written.length > 1 ? t('{n} audio files saved', { n: m.written.length }) : t('Audio saved'))}</b><span class="what"></span>
+          <div class="acts"><button class="close">${esc(t('Close'))}</button><button class="go show">${esc(t('Show in Folder'))}</button></div>`;
+        p.querySelector('.what').textContent = where ? where.split(/[\\/]/).pop() : '';
+        p.querySelector('.show').onclick = () => { call({ op: 'reveal', path: where }); p.remove(); };
+      } else if (m.error === 'cancelled') {
+        p.remove(); toast(t('Export cancelled.')); return;
+      } else {
+        p.innerHTML = `<b>${esc(t('The export stopped'))}</b><span class="what"></span><div class="acts"><button class="close">${esc(t('Close'))}</button></div>`;
+        p.querySelector('.what').textContent = String(m.error || '');
+      }
+      p.querySelector('.close').onclick = () => p.remove();
+      return;
+    }
+    const pct = m.total ? m.done / m.total : 0;
+    exportPanel.querySelector('.bar > div').style.width = Math.floor(pct * 100) + '%';
+    exportPanel.querySelector('.what').textContent = m.file || '';
+    const spent = (Date.now() - exportStart) / 1000;
+    const left = pct > 0.02 ? Math.round(spent / pct - spent) : null;
+    exportPanel.querySelector('.n').textContent = `${Math.floor(pct * 100)}%` + (left != null ? ` · ${left > 5400 ? t('about {h} hours left', { h: Math.round(left / 3600) }) : left > 90 ? t('about {m} minutes left', { m: Math.round(left / 60) }) : t('less than two minutes left')}` : '');
+  }
+
   // ------------------------------------------------------------ wiring
   window.neo.onMenu((msg) => {
     if (!msg || typeof msg.type !== 'string') return;
     if (msg.type === 'nd-read-prefs') { const was = { ...prefs }; prefs = { ...prefs, ...msg }; if (session && (was.voice !== prefs.voice || was.speed !== prefs.speed)) setPrefs({}); drawBar(); return; }
     if (msg.type === 'nd-voices') { prefs.voices = { ...prefs.voices, ...msg }; progress(msg); return; }
+    if (msg.type === 'nd-export') { exportEvent(msg); return; }
     if (msg.type !== 'nd-read') return;
     const c = msg.cmd;
     if (c === 'toggle') { if (session) toggle(); else start('here'); return; }
     if (c === 'stop') { stop(true); return; }
     if (c === 'getVoices') { getVoices(); return; }
     if (c === 'removeVoices') { removeVoices(); return; }
+    if (c === 'export') { exportAudio(msg.scope); return; }
     start(c, msg);
   });
   // NEO's own Read Aloud shortcut (Ctrl+Shift+U, or K on Linux): pause and
@@ -598,5 +688,5 @@
   // a book closed: reading stops
   setInterval(() => { if (session && (!book || book.id !== session.bookId)) stop(true); }, 1000);
 
-  window.NeoDriveRead = { start, stop: () => stop(true), toggle, step, get session() { return session; }, get prefs() { return prefs; }, setVolume, get ctx() { return ctx; }, get gain() { return gain; } };
+  window.NeoDriveRead = { exportAudio, start, stop: () => stop(true), toggle, step, get session() { return session; }, get prefs() { return prefs; }, setVolume, get ctx() { return ctx; }, get gain() { return gain; } };
 })();
