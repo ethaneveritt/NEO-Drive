@@ -1,7 +1,7 @@
-// NEO-Drive: checks a packaged app.asar against its own header — every
+// NEO+: checks a packaged app.asar against its own header — every
 // file's bytes where the header says, matching the hash it records. A
 // mismatch is an app Electron refuses to start (it exits at once, silently).
-// Usage: node scripts/neo-drive-check-asar.js path/to/app.asar
+// Usage: node scripts/neo-plus-check-asar.js path/to/app.asar
 'use strict';
 
 const fs = require('fs');

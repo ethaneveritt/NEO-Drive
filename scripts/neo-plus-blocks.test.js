@@ -1,9 +1,9 @@
-// NEO-Drive: the Docs model and diff engine (neo-drive/blocks.js), checked
-// against the Google Docs stand-in (neo-drive/fake-google.js).
+// NEO+: the Docs model and diff engine (neo-plus/blocks.js), checked
+// against the Google Docs stand-in (neo-plus/fake-google.js).
 const test = require('node:test');
 const assert = require('node:assert');
-const B = require('../neo-drive/blocks.js');
-const { FakeGoogle } = require('../neo-drive/fake-google.js');
+const B = require('../neo-plus/blocks.js');
+const { FakeGoogle } = require('../neo-plus/fake-google.js');
 
 const DOC = 'application/vnd.google-apps.document';
 const p = (text, extra = {}) => B.normalize({ k: 'p', text, ...extra });

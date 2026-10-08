@@ -1,16 +1,16 @@
-// NEO-Drive: Google Drive sync, end to end inside NEO, against the Google
-// stand-in (NEO_DRIVE_FAKE). A throwaway library, as in words.e2e.js.
-// Run: npx electron scripts/neo-drive-sync.e2e.js
+// NEO+: Google Drive sync, end to end inside NEO, against the Google
+// stand-in (NEO_PLUS_FAKE). A throwaway library, as in words.e2e.js.
+// Run: npx electron scripts/neo-plus-sync.e2e.js
 'use strict';
 
-process.env.NEO_DRIVE_FAKE = '1';
+process.env.NEO_PLUS_FAKE = '1';
 const { app, BrowserWindow } = require('electron');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `neo-drive-sync-${process.pid}-`));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `neo-plus-sync-${process.pid}-`));
 app.setPath('userData', path.join(tmp, 'app'));
 app.setPath('documents', tmp);
 const LIB = path.join(tmp, 'NEO Library');
@@ -28,8 +28,8 @@ require('../main.js');
 let wc;
 const js = (code) => wc.executeJavaScript(code, true);
 const tick = (ms = 40) => new Promise((resolve) => setTimeout(resolve, ms));
-const fake = (msg) => js(`window.neo.neoDrive({ op: 'fake', ...${JSON.stringify(msg)} })`);
-const sync = async () => { const r = await js('NeoDrive.tick(true)'); await tick(400); return r; };
+const fake = (msg) => js(`window.neo.neoPlus({ op: 'fake', ...${JSON.stringify(msg)} })`);
+const sync = async () => { const r = await js('NeoPlus.tick(true)'); await tick(400); return r; };
 const files = () => fake({ do: 'files' });
 const docFor = async (chId) => (await files()).find((f) => f.appProperties.neoChapter === chId);
 const master = async () => (await files()).find((f) => f.appProperties.neoRole === 'master');
@@ -122,7 +122,7 @@ test('italics made in NEO arrive as italics', async () => {
   await js('flushAllSaves()');
   await tick(300);
   await sync();
-  const model = await js('NeoDrive.model()');
+  const model = await js('NeoPlus.model()');
   const b = model.entries.find((e) => e.chId === c2).blocks[0];
   assert.deepEqual(b.marks, [[4, 9, 'i']]);
 });
@@ -274,7 +274,7 @@ test('the Notes tab: Notepad on top, Comments listed with Jump to comment', asyn
   await js(`document.querySelector('.nd-list .nd-item .go').click()`);
   await tick(400);
   assert.equal(await js('currentTab'), 'manuscript');
-  assert.equal(await js('NeoDrivePanels.mode'), 'comments');
+  assert.equal(await js('NeoPlusPanels.mode'), 'comments');
   assert.match(await js(`document.querySelector('#nd-margin .nd-card.active').textContent`), /How many coins/);
   // leaving and coming back to Notes opens the Notepad again, and Outline shows its own title
   await js(`switchTab('outline')`);
@@ -414,7 +414,7 @@ test('placeholders (Ctrl+Shift+X) are comments: the flag shows only while Commen
     insertPlaceholder();
   })()`);
   await tick(400);
-  assert.equal(await js('NeoDrivePanels.mode'), 'comments');
+  assert.equal(await js('NeoPlusPanels.mode'), 'comments');
   assert.equal(await js(`document.activeElement === document.querySelector('#nd-margin .nd-flag textarea')`), true);
   await js(`document.execCommand('insertText', false, 'Check the furnace.')`);
   await tick(800);
@@ -552,7 +552,7 @@ async function main() {
     let win;
     while (!(win = BrowserWindow.getAllWindows()[0])) await tick(50);
     wc = win.webContents;
-    while (!(await js(`typeof library !== 'undefined' && !!library && !!window.NeoDrive`).catch(() => false))) await tick(50);
+    while (!(await js(`typeof library !== 'undefined' && !!library && !!window.NeoPlus`).catch(() => false))) await tick(50);
     await tick(300);
     await js(`(async () => {
       document.getElementById('firstrun').hidden = true;
@@ -566,7 +566,7 @@ async function main() {
     })()`);
     await tick(800);
     // the stand-in counts as signed in
-    await js(`window.neo.neoDrive({ op: 'status' }).then((s) => s)`);
+    await js(`window.neo.neoPlus({ op: 'status' }).then((s) => s)`);
     win.focus();
     for (const t of tests) {
       try {

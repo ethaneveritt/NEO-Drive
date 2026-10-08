@@ -1,8 +1,8 @@
-# NEO-Drive: keeps Ethan's fork current with Hugh Howey's NEO and ships it.
+# NEO+: keeps Ethan's fork current with Hugh Howey's NEO and ships it.
 #
 # Every day (and on every push to main, and by hand from the Actions tab):
 #   1. merge Hugh's newest release tag from github.com/hughhowey/neo
-#   2. run the NEO-Drive tests on the merged code
+#   2. run the NEO+ tests on the merged code
 #   3. if anything changed since the last release, build the Windows
 #      installer and publish it as a release here — the copy of NEO on
 #      Ethan's computer finds it and updates itself, as it always has.
@@ -13,7 +13,7 @@
 # Versions: Hugh's 1.4.0 becomes 1.4.1, 1.4.2, … here (patch × 100 + build),
 # so ours always sort after his and after our own earlier builds.
 
-name: NEO-Drive sync and release
+name: NEO+ sync and release
 
 on:
   schedule:
@@ -27,7 +27,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: neo-drive-release
+  group: neo-plus-release
   cancel-in-progress: false
 
 jobs:
@@ -55,8 +55,8 @@ jobs:
       - name: Merge it
         id: merge
         run: |
-          git config user.name "neo-drive-bot"
-          git config user.email "neo-drive-bot@users.noreply.github.com"
+          git config user.name "neo-plus-bot"
+          git config user.email "neo-plus-bot@users.noreply.github.com"
           if git merge-base --is-ancestor "refs/upstream-tags/$UPSTREAM_TAG" HEAD; then
             echo "Already have $UPSTREAM_TAG."
             exit 0
@@ -78,7 +78,7 @@ jobs:
           title="Hugh's $UPSTREAM_TAG doesn't merge cleanly"
           if gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number' | grep -q .; then exit 0; fi
           {
-            echo "NEO $UPSTREAM_TAG changed code that NEO-Drive also changes, so it wasn't merged and nothing was released."
+            echo "NEO $UPSTREAM_TAG changed code that NEO+ also changes, so it wasn't merged and nothing was released."
             echo "Your installed NEO keeps working as it is."
             echo
             echo "Files in conflict:"
@@ -95,9 +95,9 @@ jobs:
       - name: Test the merged code
         run: |
           npm ci --no-audit --no-fund
-          node --test scripts/neo-drive-*.test.js
-          xvfb-run -a npx electron --no-sandbox scripts/neo-drive.e2e.js
-          xvfb-run -a npx electron --no-sandbox scripts/neo-drive-sync.e2e.js
+          node --test scripts/neo-plus-*.test.js
+          xvfb-run -a npx electron --no-sandbox scripts/neo-plus.e2e.js
+          xvfb-run -a npx electron --no-sandbox scripts/neo-plus-sync.e2e.js
 
       - name: Push the merge
         run: git push origin HEAD:main
@@ -112,10 +112,10 @@ jobs:
             echo "build=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # NEO+ has its own version (neo-drive/VERSION: major.minor); each
+          # NEO+ has its own version (neo-plus/VERSION: major.minor); each
           # release is the next patch. Hugh's NEO version goes in the notes.
           base=$(node -p "require('./package.json').version")
-          mm=$(tr -d ' \r\n' < neo-drive/VERSION)
+          mm=$(tr -d ' \r\n' < neo-plus/VERSION)
           n=-1
           for t in $(git tag -l "v$mm.*"); do p=${t##*.}; [ "$p" -gt "$n" ] && n=$p; done
           version="$mm.$((n + 1))"
@@ -139,10 +139,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       # Edit → Spellcheck With → Windows Spellchecker, on a real Windows machine
       - name: Test the Windows spellchecker
-        run: npx electron scripts/neo-drive-spell.e2e.js
+        run: npx electron scripts/neo-plus-spell.e2e.js
       # Read Aloud with the natural voices: the real download, the voice, the player
       - name: Test Read Aloud
-        run: npx electron scripts/neo-drive-read.e2e.js
+        run: npx electron scripts/neo-plus-read.e2e.js
       # The app's Google sign-in (Settings → Secrets and variables → Actions).
       # Without the secrets the build still works; its Google Drive menu says
       # no sign-in is configured.
@@ -152,7 +152,7 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
-          node -e "require('fs').writeFileSync('neo-drive/google-client.json', JSON.stringify({ client_id: process.env.GOOGLE_CLIENT_ID || '', client_secret: process.env.GOOGLE_CLIENT_SECRET || '' }))"
+          node -e "require('fs').writeFileSync('neo-plus/google-client.json', JSON.stringify({ client_id: process.env.GOOGLE_CLIENT_ID || '', client_secret: process.env.GOOGLE_CLIENT_SECRET || '' }))"
           if [ -z "$GOOGLE_CLIENT_ID" ]; then echo "::warning::No GOOGLE_CLIENT_ID secret: this build can't connect to Google Drive."; fi
       # The updater in the installed app reads its source from this build's
       # publish settings (app-update.yml inside the app): this repo, not Hugh's.
@@ -179,7 +179,7 @@ jobs:
       # start. v1.4.1–v1.4.4 shipped that way.)
       - name: The packed app is whole
         shell: bash
-        run: node scripts/neo-drive-check-asar.js dist/win-unpacked/resources/app.asar
+        run: node scripts/neo-plus-check-asar.js dist/win-unpacked/resources/app.asar
       - name: Smoke test — the app starts and makes its library
         shell: pwsh
         run: |

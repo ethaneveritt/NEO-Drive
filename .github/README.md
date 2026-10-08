@@ -94,4 +94,4 @@ The Notepad and Chapter Notes are in the book's **Notes** folder in Drive, and t
 
 ## For developers
 
-How the fork is built, tested and kept in step with Hugh's NEO: [NEO-DRIVE.md](../NEO-DRIVE.md). Hugh's own README: [README.md](../README.md).
+How the fork is built, tested and kept in step with Hugh's NEO: [NEO-PLUS.md](../NEO-PLUS.md). Hugh's own README: [README.md](../README.md).

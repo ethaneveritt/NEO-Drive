@@ -1,6 +1,6 @@
-# NEO-Drive: Edit → Spellcheck With → Windows Spellchecker, tested on a real
+# NEO+: Edit → Spellcheck With → Windows Spellchecker, tested on a real
 # Windows machine (results as annotations). Run by hand from the Actions tab.
-name: NEO-Drive Windows checks
+name: NEO+ Windows checks
 
 on:
   workflow_dispatch:
@@ -18,9 +18,9 @@ jobs:
           node-version: 22
       - run: npm ci --no-audit --no-fund
       - name: Spellcheck with the Windows checker
-        run: npx electron scripts/neo-drive-spell.e2e.js
+        run: npx electron scripts/neo-plus-spell.e2e.js
       - name: Read Aloud with the natural voices (every voice)
         if: always()
         env:
-          NEO_DRIVE_ALL_VOICES: '1'
-        run: npx electron scripts/neo-drive-read.e2e.js
+          NEO_PLUS_ALL_VOICES: '1'
+        run: npx electron scripts/neo-plus-read.e2e.js

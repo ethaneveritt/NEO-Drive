@@ -1,9 +1,9 @@
-// NEO-Drive: signing in to Google, and the few Drive and Docs calls the
+// NEO+: signing in to Google, and the few Drive and Docs calls the
 // sync needs. Main process only.
 //
 // Sign-in is Google's flow for desktop apps: the browser opens Google's
 // page, and Google hands the answer back to a one-time listener on this
-// computer (127.0.0.1). One permission is asked for, drive.file: NEO-Drive
+// computer (127.0.0.1). One permission is asked for, drive.file: NEO+
 // sees only the files it created, nothing else in the person's Drive.
 //
 // The sign-in that lasts (the refresh token) is kept in NEO's own app-data
@@ -26,7 +26,7 @@ const FOLDER = 'application/vnd.google-apps.folder';
 const DOC = 'application/vnd.google-apps.document';
 
 // The app's Google client: written into the build from the repo's secrets
-// (see .github/workflows/neo-drive.yml); for a development run, from the
+// (see .github/workflows/neo-plus.yml); for a development run, from the
 // environment. For a desktop app Google doesn't treat the "secret" as one:
 // it ships inside every installed copy.
 function clientConfig() {
@@ -34,14 +34,14 @@ function clientConfig() {
     const c = require('./google-client.json');
     if (c.client_id) return c;
   } catch { /* not a release build */ }
-  if (process.env.NEO_DRIVE_CLIENT_ID) {
-    return { client_id: process.env.NEO_DRIVE_CLIENT_ID, client_secret: process.env.NEO_DRIVE_CLIENT_SECRET || '' };
+  if (process.env.NEO_PLUS_CLIENT_ID) {
+    return { client_id: process.env.NEO_PLUS_CLIENT_ID, client_secret: process.env.NEO_PLUS_CLIENT_SECRET || '' };
   }
   return null;
 }
 
 class Google {
-  // dir: where the sign-in is kept (Electron's userData/neo-drive)
+  // dir: where the sign-in is kept (Electron's userData/neo-plus)
   // safeStorage: Electron's, for encrypting it; openExternal: to open the browser
   constructor({ dir, safeStorage, openExternal, log = () => {} }) {
     this.dir = dir;

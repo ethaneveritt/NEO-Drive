@@ -1,5 +1,5 @@
-// NEO-Drive: the main-process side of Ethan's additions.
-// main.js calls in here at a few marked hook points ("NEO-Drive hook"),
+// NEO+: the main-process side of Ethan's additions.
+// main.js calls in here at a few marked hook points ("NEO+ hook"),
 // so Hugh's updates to main.js merge cleanly.
 'use strict';
 
@@ -48,7 +48,7 @@ function extendTextMenu(items, params, win) {
 }
 
 // Where this build's releases live. The auto-updater itself is pointed here
-// at build time (.github/workflows/neo-drive.yml); this is the "see the
+// at build time (.github/workflows/neo-plus.yml); this is the "see the
 // release on GitHub" fallback in main.js.
 const RELEASES_REPO = 'ethaneveritt/NEO-plus';
 const LATEST_RELEASE_API = `https://api.github.com/repos/${RELEASES_REPO}/releases/latest`;
@@ -64,7 +64,7 @@ function sendToWindow(msg) {
 }
 
 function logError(where, err) {
-  try { console.error('[NEO-Drive]', where, (err && err.stack) || err); } catch { /* nowhere to say it */ }
+  try { console.error('[NEO+]', where, (err && err.stack) || err); } catch { /* nowhere to say it */ }
 }
 
 function getDrive() {
@@ -72,10 +72,10 @@ function getDrive() {
   const { app, safeStorage, shell } = require('electron');
   const { Google } = require('./google.js');
   const { Sync } = require('./sync.js');
-  const dir = path.join(app.getPath('userData'), 'neo-drive');
+  const dir = dataDir();
   let api;
   let fake = null;
-  if (process.env.NEO_DRIVE_FAKE) {
+  if (process.env.NEO_PLUS_FAKE) {
     // tests: Google in memory, already signed in
     const { FakeGoogle } = require('./fake-google.js');
     fake = new FakeGoogle();
@@ -90,8 +90,24 @@ function getDrive() {
   return drive;
 }
 
-// NEO-Drive's own settings, in NEO's app-data folder
-function settingsFile() { return path.join(require('electron').app.getPath('userData'), 'neo-drive', 'settings.json'); }
+// NEO+'s own folder in NEO's app data: settings, the Google sign-in, sync
+// state and the natural voices. Builds before 2.0.2 kept it as "neo-drive",
+// the app's first name; it's moved across once, on first use.
+let dataDirPath = null;
+function dataDir() {
+  if (dataDirPath) return dataDirPath;
+  const fs = require('fs');
+  const base = require('electron').app.getPath('userData');
+  const now = path.join(base, 'neo-plus');
+  const before = path.join(base, 'neo-drive');
+  if (!fs.existsSync(now) && fs.existsSync(before)) {
+    try { fs.renameSync(before, now); } catch (err) { logError('moving app data', err); return (dataDirPath = before); }
+  }
+  return (dataDirPath = now);
+}
+
+// NEO+'s own settings
+function settingsFile() { return path.join(dataDir(), 'settings.json'); }
 function readSettings() {
   try { return JSON.parse(require('fs').readFileSync(settingsFile(), 'utf8')); } catch { return {}; }
 }
@@ -111,7 +127,7 @@ function navHints() { return readSettings().navHints !== false; }
 // Spellcheck With: NEO's own dictionary, or the computer's (Windows' or
 // macOS's own checker, the one Word and Mail use). Linux has no system
 // checker for Electron to use, so it stays with NEO's.
-const SYSTEM_SPELL = process.platform === 'win32' || process.platform === 'darwin' || !!process.env.NEO_DRIVE_SYSTEM_SPELL; // (the env: tests)
+const SYSTEM_SPELL = process.platform === 'win32' || process.platform === 'darwin' || !!process.env.NEO_PLUS_SYSTEM_SPELL; // (the env: tests)
 function spellEngine() { return SYSTEM_SPELL && readSettings().spellEngine === 'system' ? 'system' : 'neo'; }
 function applySpellEngine() {
   try {
@@ -170,7 +186,7 @@ const docUrl = (id) => `https://docs.google.com/document/d/${encodeURIComponent(
 const folderUrl = (id) => `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
 
 // ------------------------------------------------------------ read aloud
-// Natural voices (neo-drive/tts-main.js) and the Read Aloud choices: voice
+// Natural voices (neo-plus/tts-main.js) and the Read Aloud choices: voice
 // ('system' or a Kokoro voice), speed, volume, and whether NEO has offered
 // the natural voices yet.
 let voices = null;
@@ -178,7 +194,7 @@ function getVoices() {
   if (voices) return voices;
   const { Voices } = require('./tts-main.js');
   const { app } = require('electron');
-  voices = new Voices({ dir: path.join(app.getPath('userData'), 'neo-drive'), log: logError, notify: (m) => { sendToWindow(m); if (!m.downloading) rebuildMenu(); } });
+  voices = new Voices({ dir: dataDir(), log: logError, notify: (m) => { sendToWindow(m); if (!m.downloading) rebuildMenu(); } });
   return voices;
 }
 function readPrefs() {
@@ -267,7 +283,7 @@ async function exportAudio(msg) {
   return out;
 }
 
-// The window's one door in: window.neo.neoDrive(msg) (preload.js hook)
+// The window's one door in: window.neo.neoPlus(msg) (preload.js hook)
 async function handle(_e, msg) {
   const d = getDrive();
   switch (msg && msg.op) {
@@ -379,7 +395,7 @@ async function fakeOp(g, msg) {
 }
 
 // (not under plain Node, where the unit tests load this file)
-if (process.versions.electron) require('electron').ipcMain.handle('neo-drive', handle);
+if (process.versions.electron) require('electron').ipcMain.handle('neo-plus', handle);
 
 // Title | Subtitle | Title: Subtitle, kept under `key` in the settings
 function namingMenu(label, key, current) {

@@ -1,5 +1,5 @@
-// NEO-Drive: end-to-end tests for the right-click additions, on a throwaway
-// library (same harness as words.e2e.js). Run: npx electron scripts/neo-drive.e2e.js
+// NEO+: end-to-end tests for the right-click additions, on a throwaway
+// library (same harness as words.e2e.js). Run: npx electron scripts/neo-plus.e2e.js
 'use strict';
 
 const { app, BrowserWindow } = require('electron');
@@ -8,7 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `neo-drive-test-${process.pid}-`));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `neo-plus-test-${process.pid}-`));
 app.setPath('userData', path.join(tmp, 'app'));
 app.setPath('documents', tmp);
 const LIB = path.join(tmp, 'NEO Library');
@@ -17,6 +17,9 @@ fs.writeFileSync(path.join(LIB, 'library.json'), JSON.stringify({
   authorName: '', penNames: [], firstRunDone: true, pageTheme: 'night',
   shelves: [{ id: 'shelf-1', name: 'Works in Progress', bookIds: [] }]
 }));
+// app data from a build made before the rename, to be moved across
+fs.mkdirSync(path.join(tmp, 'app', 'neo-drive'), { recursive: true });
+fs.writeFileSync(path.join(tmp, 'app', 'neo-drive', 'settings.json'), JSON.stringify({ navHints: true, carried: 'yes' }));
 const loadFile = BrowserWindow.prototype.loadFile;
 BrowserWindow.prototype.loadFile = function (file, opts) {
   return loadFile.call(this, path.resolve(__dirname, '..', file), opts);
@@ -41,6 +44,12 @@ const firstPara = () => js(`document.querySelector('.chapter-body p').textConten
 
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
+
+test('app data from before the rename is moved to neo-plus', async () => {
+  const now = path.join(tmp, 'app', 'neo-plus', 'settings.json');
+  assert.equal(JSON.parse(fs.readFileSync(now, 'utf8')).carried, 'yes');
+  assert.equal(fs.existsSync(path.join(tmp, 'app', 'neo-drive')), false);
+});
 
 test('Fix Quotes rewrites the chapter and reports', async () => {
   await caretInChapter();

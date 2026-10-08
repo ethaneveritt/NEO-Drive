@@ -1,4 +1,4 @@
-// NEO-Drive: keeping a book and its Google Docs the same.
+// NEO+: keeping a book and its Google Docs the same.
 //
 // For each book, in Drive:
 //   <book>/                          named by title, subtitle, or both
@@ -49,7 +49,7 @@ const sameBlocks = (a, b) => a.length === b.length && keysOf(a).every((k, i) => 
 const esc = (s) => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
 class Sync {
-  // api: neo-drive/google.js's Google (or the stand-in in fake-google.js)
+  // api: neo-plus/google.js's Google (or the stand-in in fake-google.js)
   // dir: where the per-book state lives
   constructor({ api, dir, log = () => {}, now = () => Date.now() }) {
     this.api = api;
@@ -286,7 +286,7 @@ class Sync {
   }
 
   // The open comments on the chapter Docs (and the Master, unless the
-  // writer turned that off), about once a minute. NEO-Drive's own notes
+  // writer turned that off), about once a minute. NEO+'s own notes
   // are left out. out.comments replaces what the window showed.
   async readComments(st, model, out, now) {
     const from = model.book.commentsFrom || 'all';
@@ -576,7 +576,7 @@ class Sync {
     }
   }
 
-  // Masters made by NEO-Drive 1.4.4–1.4.8 carried the note in their page
+  // Masters made by builds 1.4.4–1.4.8 carried the note in their page
   // header instead: take that header out (once), and post the comment.
   async moveOldReminder(st, doc) {
     if (st.headerChecked) return;
@@ -635,7 +635,7 @@ function trimGaps(list, blank = (x) => !x) {
   return list.slice(a, b);
 }
 
-// NEO-Drive's own comments (the reading-copy note, edits undone)
+// NEO+'s own comments (the reading-copy note, edits undone)
 function ours(c) {
   const t = String(c.content || '');
   return t === REMINDER || t.startsWith('Edit undone —');

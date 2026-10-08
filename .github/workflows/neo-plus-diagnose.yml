@@ -1,8 +1,8 @@
-# NEO-Drive: installs a release on a clean Windows machine, starts it, and
+# NEO+: installs a release on a clean Windows machine, starts it, and
 # reports what happened (as annotations, readable without the raw log).
 # Run by hand from the Actions tab.
 
-name: NEO-Drive diagnose a release
+name: NEO+ diagnose a release
 
 on:
   workflow_dispatch:

@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('neo', {
-  neoDrive: (msg) => ipcRenderer.invoke('neo-drive', msg), // NEO-Drive hook
+  neoPlus: (msg) => ipcRenderer.invoke('neo-plus', msg), // NEO+ hook
   readLibrary: () => ipcRenderer.invoke('library:read'),
   writeLibrary: (data) => ipcRenderer.invoke('library:write', data),
 

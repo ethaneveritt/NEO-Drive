@@ -1,4 +1,4 @@
-// NEO-Drive: an in-memory stand-in for Google Drive and Google Docs, for
+// NEO+: an in-memory stand-in for Google Drive and Google Docs, for
 // tests. It keeps Google's own index rules (and refuses what Google
 // refuses), so code that edits it correctly edits a real Doc correctly:
 //   - a Doc's body starts at index 1 and every paragraph ends in '\n'
@@ -6,7 +6,7 @@
 //   - the final newline can never be deleted
 //   - inserted text takes the style of the text before it; an inserted
 //     newline gives the new paragraph the style of the one it splits
-// The interface is the one neo-drive/google.js exposes for the real thing.
+// The interface is the one neo-plus/google.js exposes for the real thing.
 'use strict';
 
 let nextId = 1;
@@ -155,7 +155,7 @@ class FakeGoogle {
     const c = (this.comments.get(fileId) || []).find((x) => x.id === commentId);
     if (!c) { const e = new Error('Comment not found'); e.status = 404; throw e; }
     c.resolved = true;
-    (c.replies = c.replies || []).push({ id: newId('rp'), content: 'Resolved in NEO.', action: 'resolve', author: { displayName: 'NEO-Drive', me: true } });
+    (c.replies = c.replies || []).push({ id: newId('rp'), content: 'Resolved in NEO.', action: 'resolve', author: { displayName: 'NEO+', me: true } });
     return { id: c.replies[c.replies.length - 1].id };
   }
   // tests: a reader's comment on a passage

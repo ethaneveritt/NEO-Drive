@@ -1,7 +1,7 @@
-# NEO-Drive: builds the "natural voices" pack for Read Aloud and publishes it
+# NEO+: builds the "natural voices" pack for Read Aloud and publishes it
 # as a pre-release here (never mistaken for a version of NEO), so NEO
 # downloads it from one place it can trust: every file's SHA-256 is in
-# manifest.json, whose own hash is built into NEO (neo-drive/tts-main.js).
+# manifest.json, whose own hash is built into NEO (neo-plus/tts-main.js).
 #
 #   the voice     Kokoro-82M (Apache-2.0, hexgrad), full-precision ONNX export by
 #                 onnx-community, and its English voices
@@ -12,7 +12,7 @@
 #                 for computers that don't have them installed
 #
 # Built on Windows (for those DLLs). Run by hand from the Actions tab.
-name: NEO-Drive voices pack
+name: NEO+ voices pack
 
 on:
   workflow_dispatch:
@@ -79,7 +79,7 @@ jobs:
               const m = f.match(/bin\/napi-v3\/(\w+)\/(\w+)\//);
               out.push({ path: f, asset, size: buf.length, sha256: crypto.createHash("sha256").update(buf).digest("hex"), ...(m ? { platform: m[1] + "-" + m[2] } : {}) });
             }
-            const m = { name: "Kokoro-82M natural voices for NEO-Drive", model: process.env.MODEL, revision: process.argv[1], onnxruntime: process.env.ORT, phonemizer: process.env.PHONEMIZER, files: out };
+            const m = { name: "Kokoro-82M natural voices for NEO+", model: process.env.MODEL, revision: process.argv[1], onnxruntime: process.env.ORT, phonemizer: process.env.PHONEMIZER, files: out };
             fs.writeFileSync("../assets/manifest.json", JSON.stringify(m, null, 1) + "\n");
             for (const p of ["win32-x64", "darwin-arm64", "darwin-x64", "linux-x64"]) console.log("::notice::" + p + ": " + (out.filter((f) => !f.platform || f.platform === p).reduce((n, f) => n + f.size, 0) / 1048576).toFixed(0) + " MB");
           ' "$rev"
@@ -93,5 +93,5 @@ jobs:
           gh release create "${{ inputs.tag }}" -R "${{ github.repository }}" --prerelease --latest=false \
             --target "${{ github.sha }}" \
             --title "Natural voices for Read Aloud (Kokoro)" \
-            --notes "Not a version of NEO: the optional natural voices NEO-Drive's Read Aloud downloads (Read Aloud → Download Natural Voices). Kokoro-82M by hexgrad, Apache-2.0 (https://huggingface.co/hexgrad/Kokoro-82M), ONNX export by onnx-community; ONNX Runtime (MIT); phonemizer / eSpeak NG (https://github.com/xenova/phonemizer.js); Microsoft Visual C++ runtime (redistributable)." \
+            --notes "Not a version of NEO: the optional natural voices NEO+'s Read Aloud downloads (Read Aloud → Download Natural Voices). Kokoro-82M by hexgrad, Apache-2.0 (https://huggingface.co/hexgrad/Kokoro-82M), ONNX export by onnx-community; ONNX Runtime (MIT); phonemizer / eSpeak NG (https://github.com/xenova/phonemizer.js); Microsoft Visual C++ runtime (redistributable)." \
             assets/*

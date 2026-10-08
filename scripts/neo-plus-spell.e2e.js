@@ -1,8 +1,8 @@
-// NEO-Drive: Edit → Spellcheck With → the system spellchecker, end to end.
+// NEO+: Edit → Spellcheck With → the system spellchecker, end to end.
 // Needs a system checker: run on Windows or macOS (the release workflow runs
-// it on Windows). On Linux, NEO_DRIVE_SYSTEM_SPELL=1 tests the wiring with
+// it on Windows). On Linux, NEO_PLUS_SYSTEM_SPELL=1 tests the wiring with
 // Chromium's own dictionary, downloaded on first use.
-// Run: npx electron scripts/neo-drive-spell.e2e.js
+// Run: npx electron scripts/neo-plus-spell.e2e.js
 'use strict';
 
 const { app, BrowserWindow, Menu, session } = require('electron');
@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `neo-drive-spell-${process.pid}-`));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `neo-plus-spell-${process.pid}-`));
 app.setPath('userData', path.join(tmp, 'app'));
 app.setPath('documents', tmp);
 const LIB = path.join(tmp, 'NEO Library');
@@ -20,8 +20,8 @@ fs.writeFileSync(path.join(LIB, 'library.json'), JSON.stringify({
   authorName: 'Test Writer', penNames: [], firstRunDone: true, pageTheme: 'night',
   shelves: [{ id: 'shelf-1', name: 'Works in Progress', bookIds: [] }]
 }));
-fs.mkdirSync(path.join(tmp, 'app', 'neo-drive'), { recursive: true });
-fs.writeFileSync(path.join(tmp, 'app', 'neo-drive', 'settings.json'), JSON.stringify({ spellEngine: 'system' }));
+fs.mkdirSync(path.join(tmp, 'app', 'neo-plus'), { recursive: true });
+fs.writeFileSync(path.join(tmp, 'app', 'neo-plus', 'settings.json'), JSON.stringify({ spellEngine: 'system' }));
 const loadFile = BrowserWindow.prototype.loadFile;
 BrowserWindow.prototype.loadFile = function (file, opts) {
   return loadFile.call(this, path.resolve(__dirname, '..', file), opts);
@@ -69,7 +69,7 @@ async function main() {
     let win;
     while (!(win = BrowserWindow.getAllWindows()[0])) await tick(50);
     wc = win.webContents;
-    while (!(await js(`typeof library !== 'undefined' && !!library && !!window.NeoDriveSpell`).catch(() => false))) await tick(50);
+    while (!(await js(`typeof library !== 'undefined' && !!library && !!window.NeoPlusSpell`).catch(() => false))) await tick(50);
     await tick(500);
     await js(`(async () => {
       document.getElementById('firstrun').hidden = true;
@@ -88,7 +88,7 @@ async function main() {
     });
     await check('the system checker is on, and NEO\'s own pass stands aside', async () => {
       assert.equal(session.defaultSession.isSpellCheckerEnabled(), true);
-      assert.equal(await js('NeoDriveSpell.system'), true);
+      assert.equal(await js('NeoPlusSpell.system'), true);
       await js('toggleSpellcheck()');
       await tick(800);
       assert.equal(await js(`document.querySelector('.chapter-body').spellcheck`), true);
@@ -135,7 +135,7 @@ async function main() {
       edit.submenu.items.find((i) => i.label === 'Spellcheck With').submenu.items[0].click();
       await tick(800);
       assert.equal(session.defaultSession.isSpellCheckerEnabled(), false);
-      assert.equal(await js('NeoDriveSpell.system'), false);
+      assert.equal(await js('NeoPlusSpell.system'), false);
       assert.equal(await js(`document.querySelector('.chapter-body').spellcheck`), false);
     });
     console.log(`\n${failed ? failed + ' failed' : 'all passed'}`);

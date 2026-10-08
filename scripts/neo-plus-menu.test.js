@@ -1,7 +1,7 @@
-// NEO-Drive: the right-click menu additions (neo-drive/main.js)
+// NEO+: the right-click menu additions (neo-plus/main.js)
 const test = require('node:test');
 const assert = require('node:assert');
-const { extendTextMenu } = require('../neo-drive/main.js');
+const { extendTextMenu } = require('../neo-plus/main.js');
 
 const base = [{ role: 'copy' }, { type: 'separator' }, { role: 'selectAll' }];
 const fakeWin = () => {
