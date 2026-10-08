@@ -18,4 +18,4 @@ jobs:
           for f in onnx/model_quantized.onnx onnx/model.onnx onnx/model_fp16.onnx onnx/model_q8f16.onnx voices/af_heart.bin; do curl -fsSL $base/$f -o $f; done
           npm init -y > /dev/null && npm i onnxruntime-node@1.21.0 --silent
           cp ../scripts/neo-drive-voice-bench.js .
-          node neo-drive-voice-bench.js . model_quantized.onnx model.onnx model_fp16.onnx model_q8f16.onnx
+          node neo-drive-voice-bench.js . model_fp16.onnx model_q8f16.onnx
