@@ -136,7 +136,7 @@ class Google {
         const err = u.searchParams.get('error');
         const ok = code && u.searchParams.get('state') === state;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(`<!doctype html><meta charset="utf-8"><title>NEO-Drive</title>
+        res.end(`<!doctype html><meta charset="utf-8"><title>NEO+</title>
           <body style="font-family:system-ui;background:#111;color:#eee;display:grid;place-items:center;height:90vh">
           <p style="font-size:18px">${ok ? 'NEO is connected to Google Drive. You can close this tab.' : 'Google sign-in didn’t finish. You can close this tab and try again from NEO.'}</p>`);
         if (ok) settle.res(code);

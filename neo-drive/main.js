@@ -212,6 +212,15 @@ function readAloudMenu() {
       { label: t('Pause / Play'), click: send({ cmd: 'toggle' }) },
       { label: t('Stop'), click: send({ cmd: 'stop' }) },
       { type: 'separator' },
+      {
+        label: t('Export as Audio'),
+        submenu: [
+          { label: t('This Chapter…'), click: send({ cmd: 'export', scope: 'chapter' }) },
+          { label: t('The Whole Manuscript, One File…'), click: send({ cmd: 'export', scope: 'book' }) },
+          { label: t('The Whole Manuscript, a File per Chapter…'), click: send({ cmd: 'export', scope: 'chapters' }) }
+        ]
+      },
+      { type: 'separator' },
       { label: t('Voice'), submenu: voiceItems },
       { label: t('Speed'), submenu: SPEEDS.map((v) => ({ label: v === 1 ? t('Normal') : `${v}×`, type: 'radio', checked: Math.abs(pr.speed - v) < 0.01, click: () => { writeSettings({ readSpeed: v }); rebuildMenu(); sendToWindow({ type: 'nd-read-prefs', ...readPrefs() }); } })) },
       { type: 'separator' },
@@ -222,6 +231,40 @@ function readAloudMenu() {
           : { label: t('Download Natural Voices (Kokoro, about 340 MB)…'), click: send({ cmd: 'getVoices' }) }
     ]
   };
+}
+
+// Read Aloud → Export as Audio: where the files go (asked here), then the
+// voice engine writes them; progress goes to the window as it happens.
+const safeName = (s) => String(s || '').replace(/[<>:"/\\|?*\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'Untitled';
+async function exportAudio(msg) {
+  const { dialog, BrowserWindow } = require('electron');
+  const fs = require('fs');
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  const book = msg.book || {};
+  const chapters = Array.isArray(msg.chapters) ? msg.chapters : [];
+  if (!chapters.length) return { error: 'nothing to read' };
+  const music = (() => { try { return require('electron').app.getPath('music'); } catch { return undefined; } })();
+  const tag = (title, track) => ({ title, album: book.title || '', artist: book.author || '', track });
+  let files;
+  if (msg.scope === 'chapters') {
+    const r = await dialog.showOpenDialog(win, { title: t('Choose a folder for the audio files'), defaultPath: music, properties: ['openDirectory', 'createDirectory'] });
+    if (r.canceled || !r.filePaths[0]) return { cancelled: true };
+    const dir = path.join(r.filePaths[0], safeName(`${book.title || 'Book'} (audio)`));
+    fs.mkdirSync(dir, { recursive: true });
+    const w = String(chapters.length).length < 2 ? 2 : String(chapters.length).length;
+    files = chapters.map((c, i) => ({ path: path.join(dir, `${String(i + 1).padStart(w, '0')} ${safeName(c.title)}.mp3`), ...tag(c.title, `${i + 1}/${chapters.length}`), items: c.items }));
+  } else {
+    const name = msg.scope === 'book' ? (book.title || 'Book') : chapters[0].title;
+    const r = await dialog.showSaveDialog(win, { title: t('Save the audio'), defaultPath: path.join(music || '', safeName(name) + '.mp3'), filters: [{ name: 'MP3', extensions: ['mp3'] }] });
+    if (r.canceled || !r.filePath) return { cancelled: true };
+    const items = [].concat(...chapters.map((c) => c.items));
+    files = [{ path: r.filePath, ...tag(name, '1'), items }];
+  }
+  sendToWindow({ type: 'nd-export', started: true, total: files.reduce((n, f) => n + f.items.length, 0), files: files.length });
+  const res = await getVoices().exportAudio({ files, voice: msg.voice, speed: msg.speed }, (p) => sendToWindow({ type: 'nd-export', done: p.done, total: p.total, file: p.file }));
+  const out = res && res.ok ? { ok: true, written: res.written, folder: msg.scope === 'chapters' } : { error: (res && res.error) || 'failed' };
+  sendToWindow({ type: 'nd-export', finished: true, ...out });
+  return out;
 }
 
 // The window's one door in: window.neo.neoDrive(msg) (preload.js hook)
@@ -245,6 +288,9 @@ async function handle(_e, msg) {
     case 'voicesCancel': getVoices().cancel(); return { ok: true };
     case 'voicesRemove': { const r = getVoices().remove(); rebuildMenu(); return r; }
     case 'speak': return getVoices().speak({ text: msg.text, voice: msg.voice, speed: msg.speed });
+    case 'exportAudio': return exportAudio(msg);
+    case 'exportCancel': getVoices().cancelExport(); return { ok: true };
+    case 'reveal': { if (typeof msg.path === 'string') require('electron').shell.showItemInFolder(msg.path); return { ok: true }; }
     case 'connect': return connect();
     case 'disconnect': return disconnect();
     case 'sync': {

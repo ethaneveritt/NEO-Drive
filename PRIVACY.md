@@ -1,10 +1,10 @@
-# NEO-Drive privacy policy
+# NEO+ privacy policy
 
-NEO-Drive is a personal build of the NEO word processor, made and used by Ethan Everitt. It has no servers and collects nothing.
+NEO+ is a personal build of the NEO word processor, made and used by Ethan Everitt. It has no servers and collects nothing.
 
 ## What it can access
 
-When you connect Google Drive, NEO-Drive asks Google for one permission: **access only to files NEO-Drive itself creates** (the `drive.file` scope). It cannot see, read, or change any other file in your Google Drive.
+When you connect Google Drive, NEO+ asks Google for one permission: **access only to files NEO+ itself creates** (the `drive.file` scope). It cannot see, read, or change any other file in your Google Drive.
 
 With that permission it:
 
@@ -17,11 +17,11 @@ With that permission it:
 - Your manuscript stays on your computer, in your NEO Library folder, and in the Google Docs listed above in **your own** Google account.
 - Text moves only between your computer and Google's servers. It is not sent to the developer or to anyone else.
 - The Google sign-in token is stored on your computer, encrypted by your operating system where possible. It is never written into your library or sent anywhere but Google.
-- NEO-Drive has no analytics, tracking, or advertising.
+- NEO+ has no analytics, tracking, or advertising.
 
 ## Removing access
 
-Disconnect Google Drive inside NEO-Drive, or remove NEO-Drive at <https://myaccount.google.com/permissions>. The Docs it made stay in your Drive and are yours.
+Disconnect Google Drive inside NEO+, or remove NEO+ at <https://myaccount.google.com/permissions>. The Docs it made stay in your Drive and are yours.
 
 ## Contact
 

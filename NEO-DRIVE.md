@@ -1,4 +1,4 @@
-# NEO-Drive
+# NEO+
 
 Ethan Everitt's personal build of [NEO](https://github.com/hughhowey/neo), Hugh Howey's word processor for authors (MIT license). Everything Hugh ships still arrives here automatically; this fork adds a few things on top.
 
@@ -17,10 +17,10 @@ Ethan Everitt's personal build of [NEO](https://github.com/hughhowey/neo), Hugh 
 `.github/workflows/neo-drive.yml` runs every morning:
 
 1. merges Hugh's newest release tag,
-2. runs the NEO-Drive tests,
+2. runs the NEO+ tests,
 3. builds the Windows installer and publishes it as a release here.
 
-The installed NEO picks the release up on its own, the way NEO always has. If Hugh changes code that NEO-Drive also changes, the run stops, opens an issue, and nothing is released until the merge is resolved. Versions read as Hugh's version with the last number × 100 plus a build count: Hugh's 1.4.0 ships here as 1.4.1, 1.4.2, …
+The installed NEO picks the release up on its own, the way NEO always has. If Hugh changes code that NEO+ also changes, the run stops, opens an issue, and nothing is released until the merge is resolved. Versions read as Hugh's version with the last number × 100 plus a build count: Hugh's 1.4.0 ships here as 1.4.1, 1.4.2, …
 
 ## Where the code is
 
@@ -44,6 +44,6 @@ The window side (`renderer.js`) hands the open book to the engine every five sec
 
 The Google client ID and secret come from the repo's Actions secrets `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, written into `neo-drive/google-client.json` at build time (gitignored). For a development run: `NEO_DRIVE_CLIENT_ID=… NEO_DRIVE_CLIENT_SECRET=… npm start`.
 
-Hugh's files are touched only at lines marked `NEO-Drive hook`: the script tags in `index.html` (apostrophes, blocks, panels, renderer), one line in `preload.js` (`window.neo.neoDrive`), and four lines in `main.js` (require, right-click menu, app menu, release location). The README visitors see is `.github/README.md`, so Hugh's `README.md` is never edited.
+Hugh's files are touched only at lines marked `NEO+ hook`: the script tags in `index.html` (apostrophes, blocks, panels, renderer), one line in `preload.js` (`window.neo.neoDrive`), and four lines in `main.js` (require, right-click menu, app menu, release location). The README visitors see is `.github/README.md`, so Hugh's `README.md` is never edited.
 
 Hugh's own workflows (`build.yml`, `pocket.yml`) are disabled in this repo's Actions settings, so they never run here.

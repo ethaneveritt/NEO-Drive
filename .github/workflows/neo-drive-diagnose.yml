@@ -28,8 +28,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "${{ inputs.tag }}"
-          gh release download $tag -R "${{ inputs.repo }}" -p "NEO-Setup-*.exe" -D dl
-          $setup = Get-ChildItem dl -Filter "NEO-Setup-*.exe" | Select-Object -First 1
+          gh release download $tag -R "${{ inputs.repo }}" -p "NEO*-Setup-*.exe" -D dl
+          $setup = Get-ChildItem dl -Filter "NEO*-Setup-*.exe" | Select-Object -First 1
           Start-Process $setup.FullName -ArgumentList "/S" -Wait
           Start-Sleep -Seconds 5
           Get-Process | Where-Object { $_.ProcessName -like "*NEO*" } | Stop-Process -Force -ErrorAction SilentlyContinue
