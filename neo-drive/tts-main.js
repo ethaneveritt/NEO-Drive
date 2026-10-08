@@ -4,7 +4,7 @@
 // run entirely on this computer by ONNX Runtime in a helper process
 // (tts/engine.js). Nothing is sent anywhere.
 //
-// The voice files (about 190 MB) are not in the installer. "Download Natural
+// The voice files (about 340 MB) are not in the installer. "Download Natural
 // Voices" fetches them once from this repo's kokoro-voices release (only
 // this computer's platform's runtime); every file is checked against
 // manifest.json, whose own SHA-256 is pinned below.
@@ -15,8 +15,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const PACK = {
-  base: 'https://github.com/ethaneveritt/NEO-Drive/releases/download/kokoro-voices-3/',
-  manifestSha256: 'f2098a7dcc3a0b1d682e915b9ef46a11a401bd5fffa5f36088d932e38a590992'
+  base: 'https://github.com/ethaneveritt/NEO-Drive/releases/download/kokoro-voices-4/',
+  manifestSha256: '273c42f4d53f21e13bf3af864f411501442a4059c00494edc28a7dc4a33ecd6a'
 };
 const PLATFORM = process.platform + '-' + process.arch;
 // the pack's files this computer needs: everything but other platforms' runtimes

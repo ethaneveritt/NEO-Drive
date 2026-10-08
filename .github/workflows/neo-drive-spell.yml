@@ -19,6 +19,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Spellcheck with the Windows checker
         run: npx electron scripts/neo-drive-spell.e2e.js
-      - name: Read Aloud with the natural voices
+      - name: Read Aloud with the natural voices (every voice)
         if: always()
+        env:
+          NEO_DRIVE_ALL_VOICES: '1'
         run: npx electron scripts/neo-drive-read.e2e.js

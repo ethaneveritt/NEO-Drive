@@ -219,7 +219,7 @@ function readAloudMenu() {
         ? { label: t('Downloading Natural Voices…'), enabled: false }
         : st.installed
           ? { label: t('Remove Natural Voices…'), click: send({ cmd: 'removeVoices' }) }
-          : { label: t('Download Natural Voices (Kokoro, about 190 MB)…'), click: send({ cmd: 'getVoices' }) }
+          : { label: t('Download Natural Voices (Kokoro, about 340 MB)…'), click: send({ cmd: 'getVoices' }) }
     ]
   };
 }

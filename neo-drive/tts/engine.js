@@ -23,7 +23,7 @@ async function load(dir) {
   const tok = K.tokenizer(JSON.parse(fs.readFileSync(path.join(dir, 'tokenizer.json'), 'utf8')));
   // all but one of the computer's cores
   const threads = Math.max(1, Math.min(8, (os.availableParallelism ? os.availableParallelism() : os.cpus().length) - 1));
-  const session = await ort.InferenceSession.create(path.join(dir, 'onnx', 'model_fp16.onnx'), {
+  const session = await ort.InferenceSession.create(path.join(dir, 'onnx', 'model.onnx'), {
     intraOpNumThreads: threads, interOpNumThreads: 1, graphOptimizationLevel: 'all', executionMode: 'sequential'
   });
   st = { dir, ort, tok, session, voices: new Map(), threads };
@@ -51,7 +51,10 @@ async function speak(dir, text, voice, speed) {
     style: new s.ort.Tensor('float32', v.slice(at, at + STYLE), [1, STYLE]),
     speed: new s.ort.Tensor('float32', new Float32Array([speed]), [1])
   });
-  return Float32Array.from(out.waveform.data);
+  const audio = Float32Array.from(out.waveform.data);
+  // a voice that came out as nothing (numbers that overflowed) is an error, not silence
+  for (let i = 0; i < audio.length; i += 97) if (!Number.isFinite(audio[i])) throw new Error('the voice came out empty');
+  return audio;
 }
 
 process.parentPort.on('message', async (e) => {
