@@ -1,4 +1,4 @@
-// NEO-Drive: the window side of Ethan's additions. Loaded after app.js
+// NEO+: the window side of Ethan's additions. Loaded after app.js
 // (index.html), so it can use app.js's globals: book, chapterHTML,
 // syncChapter, snapshotStructure, structuralUndo, undoStack, t, toast, $.
 //
@@ -21,7 +21,7 @@
   }
 
   // ------------------------------------------------------------ apostrophes
-  const A = window.NeoDriveApostrophes;
+  const A = window.NeoPlusApostrophes;
 
   // the chapter under the pointer, else the one being written in
   function chapterAt(x, y) {
@@ -161,13 +161,13 @@
   }
 
   // ----------------------------------------------------------- Google Drive
-  // The open book goes to Google Drive every few seconds (neo-drive/sync.js
+  // The open book goes to Google Drive every few seconds (neo-plus/sync.js
   // does the work in the main process). What comes back from Docs is written
   // through NEO's own door (window.neo.writeChapter, then refreshFromDisk),
   // the same way an edit from another device arrives, so NEO's own care for
   // a chapter being typed in still applies.
-  const DB = window.NeoDriveBlocks;
-  const Panels = window.NeoDrivePanels; // comments beside the page, chapter notes, notepad
+  const DB = window.NeoPlusBlocks;
+  const Panels = window.NeoPlusPanels; // comments beside the page, chapter notes, notepad
   let lastCommentsError = '';
   const SYNC_EVERY = 5000;
   let drive = { connected: false };
@@ -321,7 +321,7 @@
     const sig = JSON.stringify([model.book, model.parts, model.notes || null, model.entries.map((e) => [e.chId, e.kind, e.part, e.name, e.label, e.section, (e.heads || []).map(DB.blockKey), e.blocks.map(DB.blockKey)]), model.master.length]);
     syncing = true;
     try {
-      const r = await window.neo.neoDrive({ op: 'sync', model: { ...model, dirty: force || sig !== lastSig, force: !!force } });
+      const r = await window.neo.neoPlus({ op: 'sync', model: { ...model, dirty: force || sig !== lastSig, force: !!force } });
       if (!r) return null;
       drive = { ...drive, ...r };
       if (Panels) Panels.setConnected(drive.connected);
@@ -335,7 +335,7 @@
       if (!book || book.id !== bookId) {
         // the book closed mid-sync: anything Docs sent is looked at afresh next time
         const back = [...r.result.pulls, ...r.result.conflicts].map((x) => x.chId);
-        if (back.length) await window.neo.neoDrive({ op: 'forget', uuid: model.book.uuid, chIds: back });
+        if (back.length) await window.neo.neoPlus({ op: 'forget', uuid: model.book.uuid, chIds: back });
         return r;
       }
       lastSig = sig;
@@ -358,11 +358,11 @@
       toast(t('Updated from Google Docs: {names}', { names: names.join(', ') }), 6000);
     }
     for (const c of res.conflicts) await applyConflict(c.chId, c.blocks, c.name);
-    if (missed.length) await window.neo.neoDrive({ op: 'forget', uuid, chIds: missed });
+    if (missed.length) await window.neo.neoPlus({ op: 'forget', uuid, chIds: missed });
     if (res.masterEdits && res.masterEdits.length) showMasterEdits(res.masterEdits);
     if (Panels && (res.notesPulls || res.notesConflicts)) Panels.applyNotes(res.notesPulls, res.notesConflicts);
     if (res.commentsFetched) {
-      // shown beside the page (neo-drive/panels.js)
+      // shown beside the page (neo-plus/panels.js)
       if (Panels) Panels.setComments(res.comments);
       if (res.commentsError && res.commentsError !== lastCommentsError) toast(t('Google Docs comments couldn’t be read: {msg}', { msg: res.commentsError }), 10000);
       lastCommentsError = res.commentsError || '';
@@ -448,7 +448,7 @@
 
   async function openInDrive(what) {
     if (!book) { toast(t('Open a book first.')); return; }
-    const r = await window.neo.neoDrive({ op: 'open', what, uuid: book.uuid, chId: currentChapterId || book.chapterOrder[0] });
+    const r = await window.neo.neoPlus({ op: 'open', what, uuid: book.uuid, chId: currentChapterId || book.chapterOrder[0] });
     if (r && r.error) toast(t('This book hasn’t been synced to Google Drive yet.'));
   }
 
@@ -466,17 +466,17 @@
   const shelfMark = document.querySelector('#shelf-header h1');
   if (shelfMark && shelfMark.textContent.trim() === 'NEO') shelfMark.textContent = 'NEO+';
 
-  if (window.neo.neoDrive && DB) {
-    window.neo.neoDrive({ op: 'status' }).then((s) => { if (s) { drive = { ...drive, ...s }; if (Panels) Panels.setConnected(drive.connected); } }).catch(() => {});
+  if (window.neo.neoPlus && DB) {
+    window.neo.neoPlus({ op: 'status' }).then((s) => { if (s) { drive = { ...drive, ...s }; if (Panels) Panels.setConnected(drive.connected); } }).catch(() => {});
     setInterval(() => { driveTick(false).catch(() => {}); }, SYNC_EVERY);
-    window.neo.neoDrive({ op: 'prefs' }).then((p) => { if (p) applyPrefs(p); }).catch(() => {});
-    window.NeoDrive = { tick: driveTick, model: () => bookModel() }; // for tests
+    window.neo.neoPlus({ op: 'prefs' }).then((p) => { if (p) applyPrefs(p); }).catch(() => {});
+    window.NeoPlus = { tick: driveTick, model: () => bookModel() }; // for tests
   }
 
   // ------------------------------------------------------- spellcheck with
   // Edit → Spellcheck With → Windows (or macOS) Spellchecker: the computer's
   // own checker underlines words as Word's does, and its suggestions lead
-  // the right-click menu (neo-drive/main.js). NEO's Spellcheck Pass (⌘/Ctrl+;)
+  // the right-click menu (neo-plus/main.js). NEO's Spellcheck Pass (⌘/Ctrl+;)
   // still turns checking on and off; only the dictionary behind it changes.
   let sysSpell = false;
   function applyPrefs(p) {
@@ -514,7 +514,7 @@
     }
   }
   setInterval(syncSpellAttrs, 500);
-  window.NeoDriveSpell = { get system() { return sysSpell; }, sync: syncSpellAttrs };
+  window.NeoPlusSpell = { get system() { return sysSpell; }, sync: syncSpellAttrs };
 
   // ------------------------------------------------------------ menu bridge
   window.neo.onMenu((msg) => {

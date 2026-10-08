@@ -1,4 +1,4 @@
-// NEO-Drive: Kokoro's text preparation, from kokoro-js 1.2.1 (Apache-2.0,
+// NEO+: Kokoro's text preparation, from kokoro-js 1.2.1 (Apache-2.0,
 // hexgrad / Xenova; dist/kokoro.js, kept as published): numbers, money and
 // abbreviations said the way a reader says them, then eSpeak NG's phonemes
 // (phonemizer, Apache-2.0), touched up the way Kokoro was trained on.

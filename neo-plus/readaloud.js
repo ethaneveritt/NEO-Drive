@@ -1,4 +1,4 @@
-// NEO-Drive: Read Aloud, with natural voices.
+// NEO+: Read Aloud, with natural voices.
 //
 // Read Aloud menu (and right-click): a chapter from its beginning or from
 // here, the highlighted passage, the page on screen, the whole manuscript,
@@ -6,7 +6,7 @@
 // bar while it reads: back a sentence, pause/play (mid-sentence), forward a
 // sentence, stop, NEO's own volume (not the computer's), speed and voice.
 //
-// The natural voices are Kokoro (neo-drive/tts-main.js), played through Web
+// The natural voices are Kokoro (neo-plus/tts-main.js), played through Web
 // Audio so pause holds its place and the volume is NEO's own. Without them,
 // or by choice, the computer's own voice reads instead, with the same
 // controls (it pauses at the start of the sentence it was on).
@@ -16,9 +16,9 @@
 (function () {
   'use strict';
   const $ = (s) => document.querySelector(s);
-  const call = (msg) => window.neo.neoDrive(msg);
+  const call = (msg) => window.neo.neoPlus(msg);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  if (!window.neo || !window.neo.neoDrive) return;
+  if (!window.neo || !window.neo.neoPlus) return;
 
   let prefs = { voice: 'af_heart', speed: 1, volume: 0.8, asked: false, voices: { installed: false, voices: [] } };
   let session = null; // { items, idx, mode, bookId, gen, paused, waiting }
@@ -688,5 +688,5 @@
   // a book closed: reading stops
   setInterval(() => { if (session && (!book || book.id !== session.bookId)) stop(true); }, 1000);
 
-  window.NeoDriveRead = { exportAudio, start, stop: () => stop(true), toggle, step, get session() { return session; }, get prefs() { return prefs; }, setVolume, get ctx() { return ctx; }, get gain() { return gain; } };
+  window.NeoPlusRead = { exportAudio, start, stop: () => stop(true), toggle, step, get session() { return session; }, get prefs() { return prefs; }, setVolume, get ctx() { return ctx; }, get gain() { return gain; } };
 })();

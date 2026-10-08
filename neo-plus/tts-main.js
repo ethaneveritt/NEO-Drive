@@ -1,4 +1,4 @@
-// NEO-Drive: natural voices for Read Aloud (main process).
+// NEO+: natural voices for Read Aloud (main process).
 //
 // The voices are Kokoro-82M (Apache-2.0), a small open neural voice model,
 // run entirely on this computer by ONNX Runtime in a helper process
@@ -93,7 +93,7 @@ class Voices {
       const mres = await net.fetch(PACK.base + 'manifest.json', { signal: ac.signal });
       if (!mres.ok) throw new Error('manifest: HTTP ' + mres.status);
       const mbuf = Buffer.from(await mres.arrayBuffer());
-      if (sha256(mbuf) !== PACK.manifestSha256) throw new Error('the voice list didn’t match what NEO-Drive expects');
+      if (sha256(mbuf) !== PACK.manifestSha256) throw new Error('the voice list didn’t match what NEO+ expects');
       const m = JSON.parse(mbuf.toString('utf8'));
       if (!m.files.some((f) => f.platform === PLATFORM)) throw new Error('natural voices aren’t available for this kind of computer yet');
       const files = m.files.filter(mine);

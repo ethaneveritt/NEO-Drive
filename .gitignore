@@ -30,5 +30,5 @@ pocket/www/dict/
 Claude outputs/
 docs/sessions/
 
-# NEO-Drive: the Google client, written into release builds from repo secrets
-neo-drive/google-client.json
+# NEO+: the Google client, written into release builds from repo secrets
+neo-plus/google-client.json

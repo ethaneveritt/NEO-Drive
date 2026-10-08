@@ -1,4 +1,4 @@
-// NEO-Drive: the natural-voice engine, in its own helper process (Electron
+// NEO+: the natural-voice engine, in its own helper process (Electron
 // utilityProcess, started by tts-main.js), so reading never slows the page.
 //
 // Kokoro-82M runs on ONNX Runtime for Node, from the downloaded voice pack;

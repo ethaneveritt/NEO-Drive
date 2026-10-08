@@ -1,4 +1,4 @@
-// NEO-Drive: the room to the right of the page.
+// NEO+: the room to the right of the page.
 //
 // A small bar sticks out from the window's right edge: Comments, Chapter
 // Notes, Notepad, and an arrow that tucks it away (only the arrow stays).
@@ -30,7 +30,9 @@
   'use strict';
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-  const call = (msg) => window.neo.neoDrive(msg);
+  const call = (msg) => window.neo.neoPlus(msg);
+  // kept under its first name: it sits beside each book, and renaming it
+  // would mean NEO+ renaming files inside the writer's library
   const CN_FILE = 'neo-drive-chapter-notes';
 
   let mode = '';               // '' | 'comments' | 'chapter' | 'notepad'
@@ -186,7 +188,7 @@
 
   let lastRoom = '';
   function placeAll() {
-    const show = onManuscript() && !!window.NeoDrive;
+    const show = onManuscript() && !!window.NeoPlus;
     dock.hidden = !show;
     dock.classList.toggle('tucked', tucked && !mode);
     dock.classList.toggle('open', !!mode);
@@ -229,7 +231,7 @@
     if (!chapterNotes || !forBook) return;
     const id = forBook;
     const data = { ...chapterNotes };
-    window.neo.writeJSON(id, CN_FILE, data).catch((err) => window.neo.logError('NEO-Drive chapter notes: ' + err));
+    window.neo.writeJSON(id, CN_FILE, data).catch((err) => window.neo.logError('NEO+ chapter notes: ' + err));
   }
   function setChapterNote(chId, text) {
     if (!chapterNotes) return;
@@ -300,7 +302,7 @@
     const blocks = [];
     for (const p of out.children) {
       if (!p.textContent.replace(/\u00a0/g, ' ').trim()) { blocks.push({ k: 'p', text: '' }); continue; }
-      for (const x of parasFromHtml(p.outerHTML)) blocks.push(window.NeoDriveBlocks.fromNeoPara(x));
+      for (const x of parasFromHtml(p.outerHTML)) blocks.push(window.NeoPlusBlocks.fromNeoPara(x));
     }
     while (blocks.length && !blocks[0].text) blocks.shift();
     while (blocks.length && !blocks[blocks.length - 1].text) blocks.pop();
@@ -350,7 +352,7 @@
     const ed = e.target && e.target.closest && e.target.closest('#aux-editor');
     if (ed && ed.dataset.kind === 'notes') pasteNotes(e);
   }, true);
-  const padToHtml = (blocks) => blocks.map((b) => window.NeoDriveBlocks.toNeoHtml({ ...b, ind: 'normal', ls: 200 })).join('');
+  const padToHtml = (blocks) => blocks.map((b) => window.NeoPlusBlocks.toNeoHtml({ ...b, ind: 'normal', ls: 200 })).join('');
 
   // ------------------------------------------------------------ the panel
   function drawPanel() {
@@ -940,7 +942,7 @@
           else refreshComments();
         }
         if (currentTab === 'notes' && notesView === 'comments' && !notesBody.contains(document.activeElement)) drawNotesView();
-      } catch (err) { window.neo.logError('NEO-Drive placeholders: ' + err); }
+      } catch (err) { window.neo.logError('NEO+ placeholders: ' + err); }
     };
   }
 
@@ -961,7 +963,7 @@
         else { notesBody.hidden = true; notesBody.innerHTML = ''; }
         placeAll();
         if (currentTab === 'manuscript' && mode) setMode(mode);
-      } catch (err) { window.neo.logError('NEO-Drive notes tab: ' + err); }
+      } catch (err) { window.neo.logError('NEO+ notes tab: ' + err); }
       return r;
     };
   }
@@ -984,7 +986,7 @@
       text: d.text || ''
     }));
     const notes = { notepad, chapters, darlings: dl };
-    sent = { book: book.id, notepad: JSON.stringify(notepad.map(window.NeoDriveBlocks.blockKey)), chapters: JSON.stringify(chapters) };
+    sent = { book: book.id, notepad: JSON.stringify(notepad.map(window.NeoPlusBlocks.blockKey)), chapters: JSON.stringify(chapters) };
     return notes;
   }
 
@@ -993,7 +995,7 @@
   // added under what's here.
   function applyNotes(pulls, conflicts) {
     if (!book || !sent || sent.book !== book.id) return;
-    const DB = window.NeoDriveBlocks;
+    const DB = window.NeoPlusBlocks;
     const say = [];
     // Notepad
     const padNow = padHtml();
@@ -1083,7 +1085,7 @@
     if (book && forBook === book.id && currentTab !== 'notes' && mode !== 'notepad' && !auxPending[book.id + '/notes'] && ticks % 30 === 0) readPad();
   }, 400);
 
-  window.NeoDrivePanels = {
+  window.NeoPlusPanels = {
     setComments,
     setConnected(v) { connected = !!v; },
     startComment,

@@ -1,6 +1,6 @@
-// NEO-Drive: "Fix Quotes" — turns every apostrophe, single quote and double
+// NEO+: "Fix Quotes" — turns every apostrophe, single quote and double
 // quote in a paragraph the right way. Pure string logic, no DOM, so the tests in
-// scripts/neo-drive-apostrophes.test.js can load it directly.
+// scripts/neo-plus-apostrophes.test.js can load it directly.
 //
 // Every change is a one-character swap ('  ‘  ’, "  “  ”), so a paragraph's length
 // never changes and the bold/italic runs around the text stay where they are.
@@ -142,5 +142,5 @@
 
   const api = { planParagraph, fixText, ELISIONS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.NeoDriveApostrophes = api;
+  else root.NeoPlusApostrophes = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

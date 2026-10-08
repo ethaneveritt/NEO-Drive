@@ -1,7 +1,7 @@
-// NEO-Drive: tests for neo-drive/apostrophes.js
+// NEO+: tests for neo-plus/apostrophes.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { fixText, planParagraph } = require('../neo-drive/apostrophes.js');
+const { fixText, planParagraph } = require('../neo-plus/apostrophes.js');
 
 const cases = [
   // contractions and possessives

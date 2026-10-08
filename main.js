@@ -60,7 +60,7 @@ function writeSettings(obj) {
 // settings.json. First launch follows the system language when NEO has it.
 // ---------------------------------------------------------------------------
 const NeoI18n = require('./i18n.js');
-const neoDrive = require('./neo-drive/main.js'); // NEO-Drive hook
+const neoPlus = require('./neo-plus/main.js'); // NEO+ hook
 const { t } = NeoI18n;
 const LOCALES_DIR = path.join(__dirname, 'locales');
 let uiLanguage = 'en';
@@ -1997,7 +1997,7 @@ function createWindow() {
     items.push({ role: 'copy', label: t('Copy'), enabled: !!can.canCopy });
     if (params.isEditable) items.push({ role: 'paste', label: t('Paste'), enabled: !!can.canPaste });
     items.push({ type: 'separator' }, { role: 'selectAll', label: t('Select All') });
-    Menu.buildFromTemplate(neoDrive.extendTextMenu(items, params, win)).popup({ window: win }); // NEO-Drive hook
+    Menu.buildFromTemplate(neoPlus.extendTextMenu(items, params, win)).popup({ window: win }); // NEO+ hook
   });
 
   // NEO does its own spellchecking (see spell:* handlers) — the engine's
@@ -2576,7 +2576,7 @@ function buildMenu() {
       ]
     }
   ];
-  const menu = Menu.buildFromTemplate(neoDrive.extendAppMenu(template, buildMenu)); // NEO-Drive hook
+  const menu = Menu.buildFromTemplate(neoPlus.extendAppMenu(template, buildMenu)); // NEO+ hook
   editMenuState.edit = null; // the old menu bar is going: forget its Edit menu first
   Menu.setApplicationMenu(menu);
   if (isMac) {
@@ -2808,7 +2808,7 @@ function lookForUpdate() {
 
 // what's on GitHub, for the fallback path and the release link
 async function latestReleaseFromGitHub() {
-  const res = await fetch(neoDrive.LATEST_RELEASE_API, { // NEO-Drive hook: our releases, not Hugh's
+  const res = await fetch(neoPlus.LATEST_RELEASE_API, { // NEO+ hook: our releases, not Hugh's
     headers: { 'User-Agent': 'NEO-App' }
   });
   if (!res.ok) throw new Error('GitHub API returned ' + res.status);

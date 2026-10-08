@@ -1,12 +1,12 @@
-// NEO-Drive: the sync engine (neo-drive/sync.js) against the Google stand-in.
+// NEO+: the sync engine (neo-plus/sync.js) against the Google stand-in.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const B = require('../neo-drive/blocks.js');
-const { Sync, bookName } = require('../neo-drive/sync.js');
-const { FakeGoogle } = require('../neo-drive/fake-google.js');
+const B = require('../neo-plus/blocks.js');
+const { Sync, bookName } = require('../neo-plus/sync.js');
+const { FakeGoogle } = require('../neo-plus/fake-google.js');
 
 const p = (text, extra = {}) => B.normalize({ k: 'p', text, ...extra });
 const brk = () => B.normalize({ k: 'brk' });
@@ -383,7 +383,7 @@ test('an old "Deleted chapters" folder inside Chapters is renamed and moved besi
   assert.deepStrictEqual(t.g.files.get(deleted.id).parents, [chapters.id]);
 });
 
-test('open comments come back for the pane; NEO-Drive\'s own notes and resolved ones do not', async () => {
+test('open comments come back for the pane; NEO+\'s own notes and resolved ones do not', async () => {
   const t = setup();
   await t.sync();
   const c1 = t.chapterDoc('c1').id, m = t.master().id;

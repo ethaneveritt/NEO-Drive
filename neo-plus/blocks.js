@@ -1,7 +1,7 @@
-// NEO-Drive: the shape a manuscript takes in Google Docs, and the edits that
+// NEO+: the shape a manuscript takes in Google Docs, and the edits that
 // turn one Doc into another. Pure functions, no network, no DOM.
 //
-// Every paragraph NEO-Drive writes is a plain one (Google's "Normal text"),
+// Every paragraph NEO+ writes is a plain one (Google's "Normal text"),
 // set by hand the way Ethan sets his manuscript pages: Times New Roman 12,
 // double-spaced, a half-inch first-line indent; a chapter heading is just a
 // centered bold line. No heading styles, no extra space.
@@ -23,7 +23,7 @@
 //
 // Everything that decides whether two blocks are "the same" lives in
 // blockKey(), and readDoc() reads back exactly what editRequests() writes,
-// so a Doc NEO-Drive wrote reads back as the blocks it was written from.
+// so a Doc NEO+ wrote reads back as the blocks it was written from.
 (function (root) {
   'use strict';
 
@@ -375,5 +375,5 @@
     editRequests, fillRequests, toNeoHtml, plain, BREAK_TEXT
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.NeoDriveBlocks = api;
+  else root.NeoPlusBlocks = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
