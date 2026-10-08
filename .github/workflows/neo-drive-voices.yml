@@ -62,7 +62,7 @@ jobs:
           cd ../assets
           echo "::notice::manifest.json sha256 $(sha256sum manifest.json | cut -d' ' -f1)"
           echo "::notice::$(ls | wc -l) assets, $(du -ch . | tail -1 | cut -f1)"
-          grep -o '"model_quantized.onnx\|"path": "onnx/model_quantized.onnx", "asset": "[^"]*", "size": [0-9]*, "sha256": "[0-9a-f]*"' manifest.json | head -2 | while read -r l; do echo "::notice::$l"; done
+          node -e 'const m=require("./manifest.json"); const f=m.files.find((x)=>x.path==="onnx/model_quantized.onnx"); console.log("::notice::model " + f.size + " bytes sha256 " + f.sha256 + " (revision " + m.revision + ")")'
       - name: Publish the pack
         env:
           GH_TOKEN: ${{ github.token }}
