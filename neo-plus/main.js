@@ -167,6 +167,7 @@ async function connect() {
     await d.api.connect();
     d.error = '';
     sendToWindow({ type: 'nd-status', ...status(), note: 'connected' });
+    offerLibrary().catch((err) => logError('library offer', err));
   } catch (err) {
     sendToWindow({ type: 'nd-status', ...status(), note: 'connect-failed', message: String(err.message || err) });
   }
@@ -180,6 +181,143 @@ function disconnect() {
   sendToWindow({ type: 'nd-status', ...status(), note: 'disconnected' });
   rebuildMenu();
   return status();
+}
+
+// ------------------------------------------------------- library sync
+// Google Drive → Keep My Library the Same on Every Computer: the whole
+// library (every book, its notes, outline, comments, covers) mirrored
+// through a "NEO+ Library" folder in Drive (neo-plus/library-sync.js). The
+// window tells this side where the library is and which book is open; a
+// look runs every half minute, when NEO comes back into view or is left,
+// and once more as NEO quits, so the last words written go up before the
+// computer is closed.
+const LIB_EVERY = 30 * 1000;
+const lib = { dir: null, open: null, sync: null, last: 0, shown: 0, error: '', timer: null, quitting: false };
+function librarySyncOn() { return readSettings().librarySync === true; }
+function getLibSync() {
+  if (lib.sync) return lib.sync;
+  const { LibrarySync } = require('./library-sync.js');
+  lib.sync = new LibrarySync({ api: getDrive().api, dir: dataDir(), libraryDir: () => lib.dir, log: logError });
+  return lib.sync;
+}
+async function syncLibrary({ loud = false } = {}) {
+  const d = getDrive();
+  if (!librarySyncOn() || !d.api.connected || !lib.dir) return null;
+  try {
+    const r = await getLibSync().pass({ open: lib.open });
+    lib.last = Date.now();
+    if (lib.error) { lib.error = ''; rebuildMenu(); }
+    const changed = r.pulled.length + r.removedHere.length + r.conflicts.length > 0 || r.books.size > 0 || r.library;
+    if (changed || r.pushed.length || Date.now() - lib.shown > 5 * 60 * 1000) { lib.shown = Date.now(); rebuildMenu(); } // "Library synced 3:41 PM"
+    if (changed || loud) {
+      sendToWindow({ type: 'nd-lib', library: r.library, books: [...r.books], conflicts: r.conflicts.length, pulled: r.pulled.length, pushed: r.pushed.length, loud });
+    }
+    return { ok: true, pulled: r.pulled.length, pushed: r.pushed.length, conflicts: r.conflicts.length, waiting: r.waiting };
+  } catch (err) {
+    const message = String((err && err.message) || err);
+    if (!(err && err.offline)) {
+      logError('library sync', err);
+      if (message !== lib.error) { lib.error = message; rebuildMenu(); }
+    }
+    if (loud) sendToWindow({ type: 'nd-lib', error: message, loud });
+    return { error: err && err.offline ? 'offline' : 'failed', message };
+  }
+}
+function startLibraryTimer() {
+  if (lib.timer) return;
+  lib.timer = setInterval(() => { syncLibrary().catch(() => {}); }, LIB_EVERY);
+  if (lib.timer.unref) lib.timer.unref();
+}
+async function setLibrarySync(on) {
+  if (on) {
+    const { dialog, BrowserWindow } = require('electron');
+    const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+    const r = await dialog.showMessageBox(win, {
+      type: 'question',
+      message: t('Keep your library the same on every computer?'),
+      detail: t('NEO+ keeps a copy of your whole library (every book, with its notes, outline, comments and covers) in a “NEO+ Library” folder in your Google Drive, and brings in what you write on your other computers. Turn this on on each computer, signed in to the same Google account.\n\nIf the same chapter changes on two computers before they catch up, both versions are kept: the other computer’s comes in as the chapter after yours.'),
+      buttons: [t('Turn On'), t('Cancel')], defaultId: 0, cancelId: 1
+    });
+    if (r.response !== 0) { rebuildMenu(); return; }
+  }
+  writeSettings({ librarySync: !!on });
+  rebuildMenu();
+  if (on) {
+    startLibraryTimer();
+    sendToWindow({ type: 'nd-lib', starting: true });
+    await syncLibrary({ loud: true });
+    rebuildMenu();
+  }
+}
+// Just connected, and Drive already holds a library from another computer:
+// offer to bring it here
+async function offerLibrary() {
+  if (librarySyncOn() || getDrive().fake) return;
+  if (!(await getLibSync().remoteExists())) return;
+  const { dialog, BrowserWindow } = require('electron');
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  const r = await dialog.showMessageBox(win, {
+    type: 'question',
+    message: t('Your library from another computer is in Google Drive.'),
+    detail: t('Bring it to this computer and keep the two the same from now on? Books already on this computer are kept, and go to your other computer too.'),
+    buttons: [t('Bring It Here'), t('Not Now')], defaultId: 0, cancelId: 1
+  });
+  if (r.response !== 0) return;
+  writeSettings({ librarySync: true });
+  rebuildMenu();
+  startLibraryTimer();
+  sendToWindow({ type: 'nd-lib', starting: true });
+  await syncLibrary({ loud: true });
+  rebuildMenu();
+}
+// as NEO quits (its windows closed, every save on disk): one last look
+try {
+  const { app } = require('electron');
+  if (app && app.on) {
+    app.on('will-quit', (e) => {
+      if (lib.quitting || !librarySyncOn() || !lib.dir || !getDrive().api.connected) return;
+      e.preventDefault();
+      lib.quitting = true;
+      lib.open = null;
+      Promise.race([syncLibrary(), new Promise((resolve) => setTimeout(resolve, 15000))])
+        .catch(() => {})
+        .finally(() => app.quit());
+    });
+  }
+} catch { /* not running in Electron (unit tests) */ }
+
+// ---------------------------------------------------------- Mac updates
+// macOS installs an update by itself only for apps signed with an Apple
+// Developer ID, which NEO+ isn't. So on a Mac, NEO+ looks for a newer
+// release now and then and says so; the download is one click away.
+// (Help → Check for Update… falls back to the release page the same way.)
+let newVersion = null;
+let versionWatch = null;
+function newer(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) > (pb[i] || 0);
+  return false;
+}
+function watchForNewVersion() {
+  const { app } = require('electron');
+  if (versionWatch || process.platform !== 'darwin' || !app.isPackaged) return;
+  const look = async () => {
+    try {
+      const res = await fetch(LATEST_RELEASE_API, { headers: { 'User-Agent': 'NEO-App' } });
+      if (!res.ok) return;
+      const data = await res.json();
+      const v = String(data.tag_name || '').replace(/^v/, '');
+      if (!newer(v, app.getVersion()) || (newVersion && newVersion.version === v)) return;
+      const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+      const dmg = (data.assets || []).find((a) => a.name.endsWith(`-${arch}.dmg`));
+      newVersion = { version: v, url: (dmg && dmg.browser_download_url) || data.html_url };
+      sendToWindow({ type: 'nd-new-version', ...newVersion });
+    } catch (err) { logError('new version', err); }
+  };
+  versionWatch = setInterval(look, 6 * 60 * 60 * 1000);
+  if (versionWatch.unref) versionWatch.unref();
+  setTimeout(look, 15000);
 }
 
 const docUrl = (id) => `https://docs.google.com/document/d/${encodeURIComponent(id)}/edit`;
@@ -307,6 +445,31 @@ async function handle(_e, msg) {
     case 'exportAudio': return exportAudio(msg);
     case 'exportCancel': getVoices().cancelExport(); return { ok: true };
     case 'reveal': { if (typeof msg.path === 'string') require('electron').shell.showItemInFolder(msg.path); return { ok: true }; }
+    case 'libHello': {
+      // the window: where the library is, and which book is open
+      const fs = require('fs');
+      if (typeof msg.lib === 'string' && path.isAbsolute(msg.lib) && fs.existsSync(msg.lib)) lib.dir = msg.lib;
+      lib.open = typeof msg.open === 'string' && msg.open ? msg.open : null;
+      startLibraryTimer();
+      watchForNewVersion();
+      return { on: librarySyncOn(), last: lib.last, error: lib.error };
+    }
+    case 'libSet': {
+      // tests only: turned on without the question
+      if (!d.fake) return { error: 'unknown op' };
+      writeSettings({ librarySync: !!msg.on });
+      startLibraryTimer();
+      return msg.on ? syncLibrary({ loud: true }) : { ok: true };
+    }
+    case 'newVersion': return newVersion;
+    case 'openNewVersion': {
+      if (newVersion && /^https:\/\/github\.com\/ethaneveritt\//i.test(newVersion.url)) require('electron').shell.openExternal(newVersion.url);
+      return { ok: true };
+    }
+    case 'libNow': {
+      lib.open = typeof msg.open === 'string' && msg.open ? msg.open : null;
+      return syncLibrary({ loud: !!msg.loud });
+    }
     case 'connect': return connect();
     case 'disconnect': return disconnect();
     case 'sync': {
@@ -428,6 +591,15 @@ function extendAppMenu(template, rebuild) {
     if (commentsFrom() !== 'off' && dd.commentCount !== undefined) {
       items.push({ label: dd.commentsError ? t('Comments: couldn’t be read ({msg})', { msg: dd.commentsError.slice(0, 80) }) : t('{n} open comments — Comments, at the right edge', { n: dd.commentCount }), enabled: false });
     }
+    items.push({ type: 'separator' }, {
+      label: t('Keep My Library the Same on Every Computer'), type: 'checkbox', checked: librarySyncOn(),
+      click: (item) => { setLibrarySync(!!item.checked).catch((err) => logError('library sync', err)); }
+    });
+    if (librarySyncOn()) {
+      if (lib.error) items.push({ label: t('Library: {msg}', { msg: lib.error.slice(0, 90) }), enabled: false });
+      else if (lib.last) items.push({ label: t('Library synced {time}', { time: new Date(lib.last).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }), enabled: false });
+      items.push({ label: t('Sync Library Now'), click: () => sendToWindow({ type: 'nd-lib-now' }) });
+    }
     items.push(
       { type: 'separator' },
       { label: t('Sync Now'), click: () => sendToWindow({ type: 'nd-syncNow' }) },
@@ -490,4 +662,4 @@ function extendAppMenu(template, rebuild) {
   return out;
 }
 
-module.exports = { extendTextMenu, extendAppMenu, LATEST_RELEASE_API };
+module.exports = { extendTextMenu, extendAppMenu, LATEST_RELEASE_API, _drive: () => getDrive() }; // (_drive: tests)

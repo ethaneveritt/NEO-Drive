@@ -98,6 +98,8 @@ jobs:
           node --test scripts/neo-plus-*.test.js
           xvfb-run -a npx electron --no-sandbox scripts/neo-plus.e2e.js
           xvfb-run -a npx electron --no-sandbox scripts/neo-plus-sync.e2e.js
+          xvfb-run -a npx electron --no-sandbox scripts/neo-plus-library.e2e.js
+          xvfb-run -a npx electron --no-sandbox scripts/neo-plus-library-new.e2e.js
 
       - name: Push the merge
         run: git push origin HEAD:main
@@ -143,6 +145,9 @@ jobs:
       # Read Aloud with the natural voices: the real download, the voice, the player
       - name: Test Read Aloud
         run: npx electron scripts/neo-plus-read.e2e.js
+      # the library kept the same on two computers, with Windows' own file rules
+      - name: Test library sync
+        run: npx electron scripts/neo-plus-library.e2e.js
       # The app's Google sign-in (Settings → Secrets and variables → Actions).
       # Without the secrets the build still works; its Google Drive menu says
       # no sign-in is configured.
@@ -189,16 +194,112 @@ jobs:
           if (-not (Test-Path "$env:USERPROFILE\Documents\NEO Library\library.json")) { Write-Output "::error::NEO started but never made its library"; exit 1 }
           Stop-Process -Id $p.Id -Force
           Write-Output "NEO starts."
-      # One release, created once, with everything the updater needs. (Letting
-      # electron-builder publish raced its own uploads into two releases.)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            dist/NEO-Plus-Setup-${{ needs.sync.outputs.version }}.exe
+            dist/NEO-Plus-Setup-${{ needs.sync.outputs.version }}.exe.blockmap
+            dist/latest.yml
+          if-no-files-found: error
+
+  # NEO+ for Macs (Apple silicon and Intel). It isn't signed with an Apple
+  # Developer ID (that takes a paid Apple account), only ad-hoc signed, so a
+  # Mac asks once before opening it (System Settings → Privacy & Security →
+  # Open Anyway), and it can't install its own updates: NEO+ says when a new
+  # version is out instead (neo-plus/main.js). Its own app id and name, so it
+  # never mixes with Hugh's NEO on the same Mac.
+  mac:
+    needs: sync
+    if: needs.sync.outputs.build == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Test on a Mac
+        run: |
+          npx electron scripts/neo-plus.e2e.js
+          npx electron scripts/neo-plus-library.e2e.js
+      - name: Test the macOS spellchecker
+        run: npx electron scripts/neo-plus-spell.e2e.js
+      - name: Test Read Aloud (the Mac voices)
+        run: npx electron scripts/neo-plus-read.e2e.js
+      - name: Google sign-in for this build
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          node -e "require('fs').writeFileSync('neo-plus/google-client.json', JSON.stringify({ client_id: process.env.GOOGLE_CLIENT_ID || '', client_secret: process.env.GOOGLE_CLIENT_SECRET || '' }))"
+      - name: Build the Mac app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -o pipefail
+          npx electron-builder --mac dmg --arm64 --x64 --publish never \
+            -c.extraMetadata.version=${{ needs.sync.outputs.version }} \
+            -c.extraMetadata.productName='NEO+' \
+            -c.productName='NEO+' \
+            -c.appId=com.ethaneveritt.neoplus \
+            -c.mac.identity=- \
+            -c.mac.hardenedRuntime=false \
+            -c.mac.notarize=false \
+            -c.dmg.artifactName='NEO-Plus-${version}-${arch}.${ext}' \
+            -c.publish.provider=github \
+            -c.publish.owner=${{ github.repository_owner }} \
+            -c.publish.repo=${{ github.event.repository.name }} 2>&1 | tee "$RUNNER_TEMP/build.log" || {
+              tail -40 "$RUNNER_TEMP/build.log" | tr '\n' ' ' | cut -c1-3500 | sed 's/^/::error title=electron-builder::/'
+              exit 1
+            }
+          ls dist
+      - name: The app is whole and signed
+        run: |
+          app="dist/mac-arm64/NEO+.app"
+          node scripts/neo-plus-check-asar.js "$app/Contents/Resources/app.asar"
+          codesign --verify --deep --strict "$app"
+          codesign -dv "$app" 2>&1 | grep -E "Signature|Identifier"
+          for a in arm64 x64; do test -f "dist/NEO-Plus-${{ needs.sync.outputs.version }}-$a.dmg"; done
+      - name: Smoke test — the app starts and makes its library
+        run: |
+          "dist/mac-arm64/NEO+.app/Contents/MacOS/NEO+" > "$RUNNER_TEMP/run.log" 2>&1 &
+          pid=$!
+          sleep 25
+          if ! kill -0 $pid 2>/dev/null; then echo "::error::NEO+ exited at once"; tail -20 "$RUNNER_TEMP/run.log"; exit 1; fi
+          test -f "$HOME/Documents/NEO Library/library.json" || { echo "::error::NEO+ started but never made its library"; exit 1; }
+          kill $pid
+          echo "NEO+ starts on a Mac."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: dist/NEO-Plus-${{ needs.sync.outputs.version }}-*.dmg
+          if-no-files-found: error
+
+  # One release, created once, when both builds passed. (Letting
+  # electron-builder publish raced its own uploads into two releases.)
+  publish:
+    needs: [sync, windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
         run: |
           v=${{ needs.sync.outputs.version }}
+          ls dist
           want=$(sed -n 's/^path: *//p' dist/latest.yml)
           if [ "$want" != "NEO-Plus-Setup-$v.exe" ]; then echo "::error::latest.yml names '$want'"; exit 1; fi
           gh release create "v$v" "dist/NEO-Plus-Setup-$v.exe" "dist/NEO-Plus-Setup-$v.exe.blockmap" dist/latest.yml \
+            "dist/NEO-Plus-$v-arm64.dmg" "dist/NEO-Plus-$v-x64.dmg" \
             --repo "${{ github.repository }}" --target "${{ needs.sync.outputs.sha }}" \
-            --title "NEO+ $v" --notes "NEO+ $v: Hugh Howey's NEO ${{ needs.sync.outputs.neo }} with Google Drive, comments and notes, natural-voice Read Aloud and more. Installs and updates on its own." --latest
+            --title "NEO+ $v" --notes "NEO+ $v: Hugh Howey's NEO ${{ needs.sync.outputs.neo }} with Google Drive, comments and notes, natural-voice Read Aloud and more.
+
+          Windows: NEO-Plus-Setup-$v.exe (installs and updates on its own).
+          Mac: NEO-Plus-$v-arm64.dmg for Apple silicon (M1 and later), NEO-Plus-$v-x64.dmg for Intel. The first time, macOS asks before opening it: System Settings → Privacy & Security → Open Anyway. NEO+ tells you when a new version is out." --latest

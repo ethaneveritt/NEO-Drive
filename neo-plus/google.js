@@ -21,7 +21,8 @@ const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DOCS = 'https://docs.googleapis.com/v1/documents';
-const FILE_FIELDS = 'id,name,mimeType,parents,appProperties,version,modifiedTime,trashed';
+const UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+const FILE_FIELDS = 'id,name,mimeType,parents,appProperties,version,modifiedTime,trashed,md5Checksum,size';
 const FOLDER = 'application/vnd.google-apps.folder';
 const DOC = 'application/vnd.google-apps.document';
 
@@ -198,7 +199,9 @@ class Google {
   // ------------------------------------------------------------ calls
   // One call, with the waiting Google asks for when it's busy (429, 5xx),
   // and one fresh token if the old one ran out.
-  async request(method, url, body, { retries = 5 } = {}) {
+  // raw: { body (Buffer), type (its Content-Type) } in place of a JSON body;
+  // binary: the answer as a Buffer; whole: the Response itself (headers too)
+  async request(method, url, body, { retries = 5, raw = null, binary = false, whole = false } = {}) {
     let refreshed = false;
     for (let attempt = 0; ; attempt++) {
       const token = await this.accessToken();
@@ -206,8 +209,8 @@ class Google {
       try {
         res = await fetch(url, {
           method,
-          headers: { Authorization: 'Bearer ' + token, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-          body: body ? JSON.stringify(body) : undefined
+          headers: { Authorization: 'Bearer ' + token, ...(raw ? { 'Content-Type': raw.type } : body ? { 'Content-Type': 'application/json' } : {}) },
+          body: raw ? raw.body : body ? JSON.stringify(body) : undefined
         });
       } catch (err) {
         const e = new Error('Offline: ' + (err.message || err));
@@ -220,6 +223,8 @@ class Google {
         await new Promise((resolve) => setTimeout(resolve, wait));
         continue;
       }
+      if (res.ok && binary) return Buffer.from(await res.arrayBuffer());
+      if (res.ok && whole) return res;
       const text = await res.text();
       const data = text ? (() => { try { return JSON.parse(text); } catch { return { raw: text }; } })() : {};
       if (!res.ok) {
@@ -258,6 +263,31 @@ class Google {
     } while (pageToken);
     return out;
   }
+  // A plain file's bytes into Drive: a new file (name, parents,
+  // appProperties) or new contents for an existing one (id). Small files go
+  // in one request, larger ones as a resumable upload (Google's limit for
+  // the one-request kind is 5 MB).
+  async upload({ id, name, parents = [], appProperties, data, mimeType = 'application/octet-stream' }) {
+    const meta = id ? { ...(appProperties ? { appProperties } : {}) } : { name, parents, appProperties: appProperties || {}, mimeType };
+    const method = id ? 'PATCH' : 'POST';
+    const where = id ? `${UPLOAD}/files/${encodeURIComponent(id)}` : `${UPLOAD}/files`;
+    if (data.length <= 4 * 1024 * 1024) {
+      const b = 'neoplus' + crypto.randomBytes(12).toString('hex');
+      const body = Buffer.concat([
+        Buffer.from(`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${b}\r\nContent-Type: ${mimeType}\r\n\r\n`),
+        data,
+        Buffer.from(`\r\n--${b}--`)
+      ]);
+      return this.request(method, `${where}?uploadType=multipart&fields=${FILE_FIELDS}`, null, { raw: { body, type: `multipart/related; boundary=${b}` } });
+    }
+    const start = await this.request(method, `${where}?uploadType=resumable&fields=${FILE_FIELDS}`, null, { raw: { body: Buffer.from(JSON.stringify(meta)), type: 'application/json; charset=UTF-8' }, whole: true });
+    const session = start.headers.get('location');
+    if (!session) throw new Error('Google Drive didn’t start the upload');
+    return this.request('PUT', session, null, { raw: { body: data, type: mimeType } });
+  }
+  // a plain file's bytes
+  download(id) { return this.request('GET', `${DRIVE}/files/${encodeURIComponent(id)}?alt=media`, null, { binary: true }); }
+
   // quote: the passage the comment is about. (Google Docs shows a comment
   // made this way in its comment list, quoting the passage; it can't be
   // pinned to the text by an outside app.)
