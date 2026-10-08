@@ -3,7 +3,7 @@
 # downloads it from one place it can trust: every file's SHA-256 is in
 # manifest.json, whose own hash is built into NEO (neo-drive/tts-main.js).
 #
-#   the voice     Kokoro-82M (Apache-2.0, hexgrad), half-precision ONNX export by
+#   the voice     Kokoro-82M (Apache-2.0, hexgrad), full-precision ONNX export by
 #                 onnx-community, and its English voices
 #   to run it     ONNX Runtime for Node (MIT) — each computer downloads only
 #                 its own platform's library — and phonemizer (eSpeak NG,
@@ -20,7 +20,7 @@ on:
       tag:
         description: Release tag for the pack
         required: true
-        default: kokoro-voices-3
+        default: kokoro-voices-4
 
 permissions:
   contents: write
@@ -43,7 +43,7 @@ jobs:
           rev=$(curl -fsSL "https://huggingface.co/api/models/$MODEL" | jq -r .sha)
           base="https://huggingface.co/$MODEL/resolve/$rev"
           voices=$(curl -fsSL "https://huggingface.co/api/models/$MODEL/tree/$rev/voices" | jq -r '.[].path' | grep -E '^voices/(af|am|bf|bm)_.*\.bin$')
-          for f in config.json tokenizer.json tokenizer_config.json onnx/model_fp16.onnx $voices; do
+          for f in config.json tokenizer.json tokenizer_config.json onnx/model.onnx $voices; do
             mkdir -p "$(dirname "$f")"
             curl -fsSL "$base/$f" -o "$f"
           done
