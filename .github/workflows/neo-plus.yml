@@ -141,12 +141,15 @@ jobs:
       - run: npm ci --no-audit --no-fund
       # Edit → Spellcheck With → Windows Spellchecker, on a real Windows machine
       - name: Test the Windows spellchecker
+        timeout-minutes: 10
         run: npx electron scripts/neo-plus-spell.e2e.js
       # Read Aloud with the natural voices: the real download, the voice, the player
       - name: Test Read Aloud
+        timeout-minutes: 10
         run: npx electron scripts/neo-plus-read.e2e.js
       # the library kept the same on two computers, with Windows' own file rules
       - name: Test library sync
+        timeout-minutes: 10
         run: npx electron scripts/neo-plus-library.e2e.js
       # The app's Google sign-in (Settings → Secrets and variables → Actions).
       # Without the secrets the build still works; its Google Drive menu says
@@ -222,12 +225,15 @@ jobs:
           node-version: 22
       - run: npm ci --no-audit --no-fund
       - name: Test on a Mac
+        timeout-minutes: 10
         run: |
           npx electron scripts/neo-plus.e2e.js
           npx electron scripts/neo-plus-library.e2e.js
       - name: Test the macOS spellchecker
+        timeout-minutes: 10
         run: npx electron scripts/neo-plus-spell.e2e.js
       - name: Test Read Aloud (the Mac voices)
+        timeout-minutes: 10
         run: npx electron scripts/neo-plus-read.e2e.js
       - name: Google sign-in for this build
         env:
